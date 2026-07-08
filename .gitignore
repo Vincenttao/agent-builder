@@ -1,0 +1,17 @@
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Editor swap files
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
