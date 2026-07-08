@@ -23,6 +23,8 @@ export interface SandboxRunRequest {
   timeoutSeconds?: number;
   /** Requested runtime; SandboxService falls back to mock if unavailable. */
   runtime?: SandboxRuntime;
+  /** Optional stdin payload (e.g. a chat message) — never passed as a CLI arg. */
+  stdin?: string;
 }
 
 export interface SandboxRunResult {

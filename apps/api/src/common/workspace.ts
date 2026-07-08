@@ -42,3 +42,14 @@ export function ensureWorkspaceDirs(): void {
 export function projectRoot(generationId: string, versionId: string): string {
   return path.join(GENERATED_DIR, generationId, versionId);
 }
+
+/** Convert an absolute workspace path to a workspace-relative path for DTOs
+ * (architecture §5.2 — only project-relative paths are returned to clients). */
+export function toWorkspaceRelative(absPath: string | null): string | null {
+  if (!absPath) return null;
+  const rel = path.relative(WORKSPACE_DIR, absPath);
+  return rel || null;
+}
+
+/** Absolute path to the Python Runner source (for PYTHONPATH in the sandbox). */
+export const PYTHON_RUNNER_SRC = path.join(REPO_ROOT, 'services', 'python-runner', 'src');

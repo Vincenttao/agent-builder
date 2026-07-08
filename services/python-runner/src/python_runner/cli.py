@@ -24,13 +24,20 @@ def _cmd_health(_args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_run(args: argparse.Namespace) -> int:
-    result = runner.run_agent(args.project, args.message)
+    message = args.message
+    if not message:
+        # Read from stdin so user text is never a CLI arg (sandbox allowlist).
+        message = sys.stdin.read().strip() if not sys.stdin.isatty() else ""
+    result = runner.run_agent(args.project, message)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "success" else 1
 
 
 def _cmd_workflow_run(args: argparse.Namespace) -> int:
-    inputs = json.loads(args.input) if args.input else {}
+    raw = args.input
+    if not raw:
+        raw = sys.stdin.read().strip() if not sys.stdin.isatty() else "{}"
+    inputs = json.loads(raw) if raw else {}
     result = runner.run_workflow(args.project, inputs)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "success" else 1
@@ -46,7 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
     agent_run = agent_sub.add_parser("run", help="Run the agent with a message")
     agent_run.add_argument("--project", required=True, help="Path to the generated project root")
-    agent_run.add_argument("--message", required=True, help="User message")
+    agent_run.add_argument(
+        "--message",
+        required=False,
+        default=None,
+        help="User message (if omitted, read from stdin)",
+    )
     agent_run.set_defaults(func=_cmd_agent_run)
 
     workflow = sub.add_parser("workflow", help="Run a generated Workflow project")

@@ -46,10 +46,12 @@ export const ALLOWED_PREFIXES: readonly string[][] = [
   ['python', '-m', 'pytest'],
   ['python', 'src/main.py'],
   ['python', '-m', 'src.main'],
+  ['python', '-m', 'python_runner.cli'],
   ['python3', '--version'],
   ['python3', '-m', 'pytest'],
   ['python3', 'src/main.py'],
   ['python3', '-m', 'src.main'],
+  ['python3', '-m', 'python_runner.cli'],
 ];
 
 /** Env vars that may be injected into a sandbox (runtime_and_sandbox §5). */
@@ -60,6 +62,7 @@ export const ENV_ALLOWLIST: readonly string[] = [
   'ANTHROPIC_API_KEY',
   'PATH',
   'HOME',
+  'PYTHONPATH',
   'PYTHONDONTWRITEBYTECODE',
   'PYTHONUNBUFFERED',
   'MOCK_OPENJIUWEN',

@@ -45,7 +45,7 @@ export class MockSandboxRunner implements SandboxRunner {
       const child = spawn(req.command[0], req.command.slice(1), {
         cwd: req.workspacePath,
         env: filterEnv(process.env as Record<string, string>, req.envAllowlist),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: req.stdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
         timeout: timeoutMs,
       });
 
@@ -54,6 +54,10 @@ export class MockSandboxRunner implements SandboxRunner {
       const stderrChunks: Buffer[] = [];
       child.stdout?.on('data', (c: Buffer) => stdoutChunks.push(c));
       child.stderr?.on('data', (c: Buffer) => stderrChunks.push(c));
+
+      if (req.stdin && child.stdin) {
+        child.stdin.end(req.stdin);
+      }
 
       const done = (status: SandboxJobStatus, exitCode: number | null) => {
         try {

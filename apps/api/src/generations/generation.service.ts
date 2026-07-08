@@ -16,6 +16,8 @@ import {
   EventType,
   TestStatus,
   AgentBuilderError,
+  ErrorCode,
+  canTransition,
 } from '@agent-builder/shared-contracts';
 
 /**
@@ -86,6 +88,26 @@ export class GenerationService {
 
   getById(id: string): Generation | null {
     return this.genRepo.getById(id);
+  }
+
+  /** Re-derive the parsed Spec for a generation (deterministic; used by the
+   * orchestrator so createGeneration's signature stays simple). */
+  getSpec(id: string): AgentSpec | WorkflowSpec {
+    const gen = this.genRepo.getById(id);
+    if (!gen) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `生成任务 ${id} 不存在`);
+    }
+    const spec = this.specParser.parse(gen.user_prompt, gen.type);
+    return this.specValidator.validate(spec) as AgentSpec | WorkflowSpec;
+  }
+
+  /** Lifecycle transition used by the orchestrator (architecture §11). */
+  transitionTo(id: string, status: GenerationStatus): void {
+    const gen = this.genRepo.getById(id);
+    if (!gen) return;
+    if (canTransition(gen.status as GenerationStatus, status)) {
+      this.genRepo.updateStatus(id, status);
+    }
   }
 
   /**
