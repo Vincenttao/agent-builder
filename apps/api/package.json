@@ -1,0 +1,47 @@
+{
+  "name": "@agent-builder/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "ts-node src/main.ts",
+    "test": "jest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-builder/shared-contracts": "*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "archiver": "^7.0.1",
+    "better-sqlite3": "^11.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.0.0",
+    "@types/archiver": "^6.0.2",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/express": "^4.17.21",
+    "@types/supertest": "^6.0.2",
+    "@types/uuid": "^10.0.0",
+    "supertest": "^7.0.0",
+    "ts-node": "^10.9.2"
+  },
+  "jest": {
+    "moduleFileExtensions": ["ts", "js", "json"],
+    "rootDir": ".",
+    "testRegex": "src/.*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "setupFiles": ["<rootDir>/setup.ts"],
+    "moduleNameMapper": {
+      "^@agent-builder/shared-contracts$": "<rootDir>/../../packages/shared-contracts/src/index.ts"
+    },
+    "collectCoverageFrom": ["src/**/*.ts"],
+    "coverageDirectory": "./coverage"
+  }
+}

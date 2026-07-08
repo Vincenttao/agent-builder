@@ -1,0 +1,24 @@
+[project]
+name = "python-runner"
+version = "0.1.0"
+description = "Agent Builder Python Runner — runs generated OpenJiuwen Agent/Workflow projects under a mock OpenJiuwen runtime."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+python-runner = "python_runner.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
