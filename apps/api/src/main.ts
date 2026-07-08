@@ -1,5 +1,4 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 const DEFAULT_PORT = 3001;
@@ -10,14 +9,8 @@ async function bootstrap(): Promise<void> {
   // The Next.js dev server (3000) and production runtime call the API cross-origin.
   app.enableCors({ origin: true, credentials: true });
 
-  // DTOs use class-validator-style shared contracts; reject unknown payloads.
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: false,
-      transform: true,
-    }),
-  );
+  // Request validation is handled per-handler by ZodValidationPipe against the
+  // zod schemas in @agent-builder/shared-contracts (single source of truth).
 
   const port = Number(process.env.PORT ?? DEFAULT_PORT);
   await app.listen(port);

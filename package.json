@@ -8,16 +8,17 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm run test:contracts && npm run test:api && npm run test:web && npm run test:python",
+    "build:contracts": "npm --workspace @agent-builder/shared-contracts run build",
+    "test": "npm run build:contracts && npm run test:contracts && npm run test:api && npm run test:web && npm run test:python",
     "test:contracts": "npm --workspace @agent-builder/shared-contracts run test",
     "test:api": "npm --workspace @agent-builder/api run test",
     "test:web": "npm --workspace @agent-builder/web run test",
     "test:python": "cd services/python-runner && python -m pytest -q",
     "test:e2e": "npm --workspace @agent-builder/web run test:e2e",
     "lint": "eslint .",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm --workspace @agent-builder/shared-contracts run build && npm --workspace @agent-builder/api run build && npm --workspace @agent-builder/web run build",
-    "dev:api": "npm --workspace @agent-builder/api run start:dev",
+    "typecheck": "npm run build:contracts && npm run typecheck --workspaces --if-present",
+    "build": "npm run build:contracts && npm --workspace @agent-builder/api run build && npm --workspace @agent-builder/web run build",
+    "dev:api": "npm run build:contracts && npm --workspace @agent-builder/api run start:dev",
     "dev:web": "npm --workspace @agent-builder/web run dev"
   },
   "engines": {

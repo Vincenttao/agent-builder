@@ -8,3 +8,10 @@
  * P0 scope: Agent & Workflow generation only — no Skills (PRD §4.2).
  */
 export * from './generation';
+export * from './generation-entity';
+export * from './events';
+export * from './version';
+export * from './runs';
+export * from './sandbox';
+export * from './errors';
+export * from './api';
