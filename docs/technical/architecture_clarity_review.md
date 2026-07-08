@@ -188,6 +188,7 @@
 2. `docs/technical/agent_builder_architecture.md`
 3. `docs/technical/architecture_clarity_review.md`
 4. `docs/technical/runtime_and_sandbox.md`
+5. `docs/technical/p0_implementation_plan.md`
 
 下一个 Agent 的第一项任务必须是：
 
