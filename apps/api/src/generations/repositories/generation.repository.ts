@@ -92,6 +92,12 @@ export class GenerationRepository {
       .run(status, new Date().toISOString(), id);
   }
 
+  updateTitle(id: string, title: string): void {
+    this.dbService.db
+      .prepare('UPDATE generations SET title = ?, updated_at = ? WHERE id = ?')
+      .run(title, new Date().toISOString(), id);
+  }
+
   setActiveVersion(id: string, versionId: string, projectRoot: string | null): void {
     this.dbService.db
       .prepare(

@@ -15,3 +15,4 @@ export * from './runs';
 export * from './sandbox';
 export * from './errors';
 export * from './api';
+export * from './specs';

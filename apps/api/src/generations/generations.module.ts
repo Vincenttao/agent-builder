@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
+import { SpecModule } from '../spec/spec.module';
 import { GenerationsController } from './generations.controller';
 import { GenerationService } from './generation.service';
 import { EventService } from './event.service';
@@ -10,7 +11,7 @@ import { RunRepository } from './repositories/run.repository';
 import { SandboxJobRepository } from './repositories/sandbox.repository';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, SpecModule],
   controllers: [GenerationsController],
   providers: [
     GenerationService,

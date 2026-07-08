@@ -2,23 +2,29 @@ import { Injectable, Logger } from '@nestjs/common';
 import { GenerationRepository } from './repositories/generation.repository';
 import { VersionRepository } from './repositories/version.repository';
 import { EventService } from './event.service';
+import { SpecParserService } from '../spec/spec-parser.service';
+import { SpecValidatorService } from '../spec/spec-validator.service';
 import type {
   CreateGenerationRequest,
   Generation,
   ProjectVersion,
+  AgentSpec,
+  WorkflowSpec,
 } from '@agent-builder/shared-contracts';
 import {
   GenerationStatus,
   EventType,
   TestStatus,
+  AgentBuilderError,
 } from '@agent-builder/shared-contracts';
 
 /**
  * Orchestrates a generation's lifecycle (architecture §5.2).
  *
- * Phase 1 implements createGeneration (metadata + plan_created event) and the
- * version/failed-integrity primitives. The full generate→test→version pipeline
- * is wired in Phase 6 once spec parsing, code generation and the sandbox exist.
+ * Phase 1: createGeneration metadata + plan_created event.
+ * Phase 2: deterministic spec parse + validate (synchronous — fast; the long
+ *          generation/test pipeline lands in Phase 6 and runs async).
+ * Phase 6: generate → smoke test → version → completed/failed.
  */
 @Injectable()
 export class GenerationService {
@@ -28,6 +34,8 @@ export class GenerationService {
     private readonly genRepo: GenerationRepository,
     private readonly versionRepo: VersionRepository,
     private readonly eventService: EventService,
+    private readonly specParser: SpecParserService,
+    private readonly specValidator: SpecValidatorService,
   ) {}
 
   async createGeneration(req: CreateGenerationRequest): Promise<Generation> {
@@ -51,6 +59,27 @@ export class GenerationService {
       payload: { type: req.type, title, model: req.model ?? 'default' },
     });
     this.genRepo.updateStatus(id, GenerationStatus.Planning);
+
+    // Parse + validate synchronously (deterministic, fast). Failure is a
+    // user-facing 400 — the generation is marked failed and the error thrown.
+    try {
+      const spec = this.specParser.parse(req.prompt, req.type);
+      const validated = this.specValidator.validate(spec) as AgentSpec | WorkflowSpec;
+      const specName = 'name' in validated ? validated.name : title;
+      this.genRepo.updateTitle(id, specName);
+      await this.eventService.record({
+        generation_id: id,
+        type: EventType.Thought,
+        message: `需求已解析为 Spec：${specName}`,
+        payload: { spec: validated as unknown as Record<string, unknown> },
+      });
+    } catch (err) {
+      if (err instanceof AgentBuilderError) {
+        await this.markFailed(id, err.code, err.message);
+        throw err;
+      }
+      throw err;
+    }
 
     return this.genRepo.getById(id)!;
   }

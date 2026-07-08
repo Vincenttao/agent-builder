@@ -5,6 +5,8 @@ import { EventRepository } from './repositories/event.repository';
 import { VersionRepository } from './repositories/version.repository';
 import { EventService } from './event.service';
 import { GenerationService } from './generation.service';
+import { SpecParserService } from '../spec/spec-parser.service';
+import { SpecValidatorService } from '../spec/spec-validator.service';
 import {
   GenerationStatus,
   EventType,
@@ -26,7 +28,9 @@ describe('GenerationService (Phase 1 §5.2)', () => {
     const eventRepo = new EventRepository(db);
     const versionRepo = new VersionRepository(db);
     const eventService = new EventService(eventRepo);
-    const genService = new GenerationService(genRepo, versionRepo, eventService);
+    const specParser = new SpecParserService();
+    const specValidator = new SpecValidatorService();
+    const genService = new GenerationService(genRepo, versionRepo, eventService, specParser, specValidator);
     return { db, genRepo, eventRepo, versionRepo, eventService, genService };
   }
 
@@ -54,6 +58,12 @@ describe('GenerationService (Phase 1 §5.2)', () => {
     // SSE can receive the plan_created event (checkpoint #3).
     const events = eventRepo.listByGeneration(gen.id);
     expect(events.some((e) => e.type === EventType.PlanCreated)).toBe(true);
+
+    // Phase 2: deterministic parse wired into createGeneration — title is taken
+    // from the parsed Spec name, and a Thought (spec_parsed) event is emitted.
+    const refreshed = genRepo.getById(gen.id);
+    expect(refreshed!.title).toBe('塔罗牌占卜 Agent');
+    expect(events.some((e) => e.type === EventType.Thought)).toBe(true);
   });
 
   it('a failed re-generation does NOT overwrite the previous completed version (PRD FR-012 / architecture §5.2)', async () => {

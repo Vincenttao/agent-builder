@@ -7,6 +7,7 @@ import { GenerationsModule } from './generations.module';
 import { GenerationsController } from './generations.controller';
 import { EventService } from './event.service';
 import { GenerationService } from './generation.service';
+import { AgentBuilderExceptionFilter } from '../common/agent-builder-exception.filter';
 import { createInMemoryDb } from '../testing/in-memory-db';
 import { EventType, GenerationType } from '@agent-builder/shared-contracts';
 
@@ -28,6 +29,7 @@ describe('GenerationsController (Phase 1)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
+    app.useGlobalFilters(new AgentBuilderExceptionFilter());
     await app.init();
     httpServer = app.getHttpServer();
     controller = moduleRef.get(GenerationsController);
@@ -70,10 +72,19 @@ describe('GenerationsController (Phase 1)', () => {
       .expect(400);
   });
 
+  it('POST returns 400 PROMPT_PARSE_FAILED for a non-demo prompt (Phase 2 §6.4 #5)', async () => {
+    const res = await request(httpServer)
+      .post('/api/generations')
+      .send({ type: 'agent', prompt: '做一个天气查询 Agent' })
+      .expect(400);
+    expect(res.body.error_code).toBe('PROMPT_PARSE_FAILED');
+    expect(typeof res.body.message).toBe('string');
+  });
+
   it('SSE observable replays history then streams live events', async () => {
     const gen = await genService.createGeneration({
       type: GenerationType.Agent,
-      prompt: 'p',
+      prompt: '塔罗占卜 Agent',
       mode: 'auto',
       model: 'default',
     });
