@@ -20,6 +20,8 @@ export default tseslint.config(
       // Generated output / runtime workspace
       'workspace/**',
       'services/python-runner/**',
+      // Template data package (CommonJS index.js + .d.ts; not application code)
+      'packages/generated-project-templates/**',
     ],
   },
   js.configs.recommended,

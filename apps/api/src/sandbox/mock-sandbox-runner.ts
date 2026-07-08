@@ -38,8 +38,6 @@ export class MockSandboxRunner implements SandboxRunner {
     fs.mkdirSync(logDir, { recursive: true });
     const stdoutPath = path.join(logDir, 'stdout.log');
     const stderrPath = path.join(logDir, 'stderr.log');
-    const out = fs.createWriteStream(stdoutPath);
-    const err = fs.createWriteStream(stderrPath);
     const start = Date.now();
     const timeoutMs = (req.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
@@ -51,10 +49,19 @@ export class MockSandboxRunner implements SandboxRunner {
         timeout: timeoutMs,
       });
 
-      child.stdout?.pipe(out);
-      child.stderr?.pipe(err);
+      // Collect in memory; write synchronously on close to avoid stream races.
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      child.stdout?.on('data', (c: Buffer) => stdoutChunks.push(c));
+      child.stderr?.on('data', (c: Buffer) => stderrChunks.push(c));
 
       const done = (status: SandboxJobStatus, exitCode: number | null) => {
+        try {
+          fs.writeFileSync(stdoutPath, Buffer.concat(stdoutChunks));
+          fs.writeFileSync(stderrPath, Buffer.concat(stderrChunks));
+        } catch (e) {
+          this.logger.warn(`failed to write run logs: ${(e as Error).message}`);
+        }
         resolve({
           jobId,
           runtime: this.runtime,
@@ -68,16 +75,12 @@ export class MockSandboxRunner implements SandboxRunner {
       };
 
       child.on('error', (e: Error) => {
-        err.write(`sandbox spawn error: ${e.message}\n`);
-        out.end();
-        err.end();
+        stderrChunks.push(Buffer.from(`sandbox spawn error: ${e.message}\n`));
         this.logger.warn(`mock sandbox spawn error: ${e.message}`);
         done(SandboxJobStatus.Failed, null);
       });
 
       child.on('close', (code, signal) => {
-        out.end();
-        err.end();
         if (signal === 'SIGTERM' || signal === 'SIGKILL') {
           done(SandboxJobStatus.Timeout, null);
         } else {

@@ -1,0 +1,54 @@
+# Presales requirement-analysis Workflow (declarative view of the Workflow Spec).
+# The runtime reads config/workflow_spec.json; this file is the human-readable
+# artifact required by PRD FR-004.
+
+id: presales_requirement_analysis
+name: 售前需求分析 Workflow
+openjiuwen_workflow_type: workflow
+
+inputs:
+  - name: requirement_doc
+    type: string
+    required: true
+
+outputs:
+  - name: report
+    type: markdown
+
+nodes:
+  - id: start
+    name: Start
+    type: start
+    description: 流程入口，接收客户需求文档。
+  - id: extract_requirement
+    name: 需求抽取
+    type: llm
+    description: 从需求文档抽取客户目标与限制条件。
+  - id: match_solution
+    name: 方案匹配
+    type: llm
+    description: 根据目标与限制匹配可演示的解决方案。
+  - id: generate_demo_plan
+    name: Demo 清单生成
+    type: python
+    description: 根据解决方案生成 Demo 清单。
+  - id: export_report
+    name: 报告输出
+    type: export
+    description: 汇总为 Markdown 报告。
+  - id: end
+    name: End
+    type: end
+    description: 流程出口，输出最终报告。
+
+edges:
+  - from: start
+    to: extract_requirement
+  - from: extract_requirement
+    to: match_solution
+  - from: match_solution
+    to: generate_demo_plan
+  - from: generate_demo_plan
+    to: export_report
+  - from: export_report
+    to: end
