@@ -64,11 +64,16 @@ describe('OrchestratorController — POST create (Phase 6 §10.2)', () => {
     await request(httpServer).post('/api/generations').send({ type: 'skill', prompt: 'x' }).expect(400);
   });
 
-  it('returns 400 PROMPT_PARSE_FAILED for a non-demo prompt', async () => {
+  it('#3 a non-demo prompt still returns 201 — parse is deferred to the async pipeline (Phase 9 §2.3-A)', async () => {
+    // createGeneration no longer parses on the HTTP path; the LLM parse runs in
+    // runPipeline (mocked here). The request must return fast regardless of
+    // whether the prompt is a demo or not.
     const res = await request(httpServer)
       .post('/api/generations')
       .send({ type: 'agent', prompt: '做一个天气查询 Agent' })
-      .expect(400);
-    expect(res.body.error_code).toBe('PROMPT_PARSE_FAILED');
+      .expect(201);
+    expect(res.body.generation_id).toMatch(/^gen_/);
+    expect(res.body.status).toBe('planning');
+    expect(runPipeline).toHaveBeenCalled();
   });
 });

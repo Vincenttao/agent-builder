@@ -134,4 +134,33 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       .get(`/api/generations/${id}/files/content?path=../../etc/passwd`)
       .expect(400);
   });
+
+  it('#4 non-example Agent prompt parses via the mock LLM and completes (Phase 11)', async () => {
+    const id = await createAndWait('做一个天气查询 Agent，根据城市返回天气信息', 'agent');
+    // The parsed Spec is persisted and read back without re-parsing (§9 test #9).
+    const spec = genService.getSpec(id);
+    expect(spec.name).toBe('通用智能体'); // mock LLM generic spec, not the tarot demo
+    // Source files present.
+    const tree = (await request(httpServer).get(`/api/generations/${id}/files`).expect(200)).body;
+    expect(JSON.stringify(tree)).toContain('src/agents/agent.py');
+    // Agent run reply names the generic tool, never tarot language (§12 §1 #6).
+    const run = await request(httpServer)
+      .post(`/api/generations/${id}/agent/runs`)
+      .send({ message: '北京今天天气' })
+      .expect(201);
+    expect(run.body.output.reply).toContain('query_info');
+    expect(run.body.output.reply).not.toContain('牌');
+  });
+
+  it('#5 non-example Workflow prompt parses via the mock LLM and completes (Phase 11)', async () => {
+    const id = await createAndWait('合同审核流程，抽取关键条款并标注风险等级', 'workflow');
+    const spec = genService.getSpec(id);
+    expect(spec.name).toBe('通用处理工作流');
+    const run = await request(httpServer)
+      .post(`/api/generations/${id}/workflow/runs`)
+      .send({ inputs: { requirement_doc: '一份合同文档示例。' } })
+      .expect(201);
+    expect(run.body.status).toBe('success');
+    expect(run.body.events.length).toBeGreaterThan(0);
+  });
 });

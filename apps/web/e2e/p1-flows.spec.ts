@@ -1,9 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * P0 E2E (Phase 8 §12.2): the two standard demo flows through the browser.
- * Tarot Agent: prompt -> completed -> summary -> source -> agent run -> export.
- * Presales Workflow: prompt -> completed -> node records -> export.
+ * P1 E2E (Phase 12 §1 #1/#2/#6/#7): non-example prompts go end-to-end through
+ * the real LLM parser path (mock provider) — generate -> source -> simulate
+ * run -> export. The mock run replies must NOT leak tarot/presales demo language.
+ *
+ * These exercise the Phase 9 hybrid parser (non-demo prompt -> mock LLM -> a
+ * generic Spec) and the Phase 12 generic mock runtime.
  */
 
 async function waitForCompleted(page: Page) {
@@ -24,59 +27,55 @@ async function submitPrompt(page: Page, type: 'agent' | 'workflow', prompt: stri
   await page.waitForURL(/\/generations\/gen_.+/);
 }
 
-test.describe('P0 E2E — standard demo flows', () => {
-  test('Tarot Agent: generate -> source -> run -> export', async ({ page }) => {
+test.describe('P1 E2E — non-example prompts (LLM parser + generic runtime)', () => {
+  test('Weather Agent: generate -> source -> run -> export (no demo leakage)', async ({ page }) => {
     await submitPrompt(
       page,
       'agent',
-      '一个塔罗牌占卜 Agent。首先询问用户想要占卜的问题，之后抽取塔罗牌并解读。',
+      '做一个天气查询 Agent，用户输入城市后调用工具返回该城市的天气信息。',
     );
     await waitForCompleted(page);
 
-    // Completion summary visible.
     await expect(page.getByTestId('completion-summary')).toBeVisible();
     await expect(page.getByTestId('test-result')).toHaveText('通过');
 
-    // Source tab: open src/agents/agent.py
+    // Source tab: agent.py present
     await page.getByTestId('tab-source').click();
     await expect(page.getByTestId('file-node-src/agents/agent.py')).toBeVisible();
-    await page.getByTestId('file-node-src/agents/agent.py').click();
-    await expect(page.getByTestId('codeviewer')).toContainText('build_agent');
 
-    // Agent run
+    // Agent run: reply names the generic tool, never tarot language (§1 #6).
     await page.getByTestId('tab-run').click();
-    await page.getByTestId('agent-message-input').fill('我想看看最近职业发展的趋势');
-    const downloadPromise = page.waitForEvent('download').catch(() => null);
+    await page.getByTestId('agent-message-input').fill('北京今天天气');
     await page.getByTestId('agent-send').click();
-    // Generic mock runtime (Phase 12): the reply names the tool it called.
-    await expect(page.getByTestId('agent-reply')).toContainText('draw_tarot');
+    const reply = page.getByTestId('agent-reply');
+    await expect(reply).toBeVisible();
+    await expect(reply).toContainText('query_info');
+    await expect(reply).not.toContainText('牌');
+    await expect(reply).not.toContainText('占卜');
 
     // Export
+    const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('export-button').click();
     const download = await downloadPromise;
-    if (download) {
-      expect(download.suggestedFilename()).toMatch(/\.zip$/);
-    }
+    expect(download.suggestedFilename()).toMatch(/\.zip$/);
   });
 
-  test('Presales Workflow: generate -> node records -> export', async ({ page }) => {
+  test('Contract Review Workflow: generate -> source -> run -> export', async ({ page }) => {
     await submitPrompt(
       page,
       'workflow',
-      '读取客户需求文档，抽取客户目标和限制条件，匹配可演示的解决方案，生成 Demo 清单并输出一份 Markdown 报告。',
+      '合同审核流程，读取合同文档，抽取关键条款，标注风险等级，输出审核结果。',
     );
     await waitForCompleted(page);
 
-    // Source tab: workflow.py present
     await page.getByTestId('tab-source').click();
     await expect(page.getByTestId('file-node-src/workflows/workflow.py')).toBeVisible();
 
-    // Workflow run -> node statuses + Markdown report
+    // Workflow run: generic node statuses; end node succeeds (§1 #2/#7).
     await page.getByTestId('tab-run').click();
     await page.getByTestId('workflow-run').click();
     await expect(page.getByTestId('workflow-nodes')).toBeVisible();
     await expect(page.getByTestId('node-status-end')).toHaveText('success');
-    await expect(page.getByTestId('workflow-report')).toContainText('# 售前需求分析报告');
 
     // Export
     const downloadPromise = page.waitForEvent('download');

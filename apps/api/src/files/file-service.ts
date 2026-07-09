@@ -11,7 +11,7 @@ import type { FileTreeNode, FileContentResponse } from '@agent-builder/shared-co
  * Phase 8 security regression).
  */
 
-/** Patterns excluded from the export zip (runtime_and_sandbox §13). */
+/** Patterns excluded from the export zip (runtime_and_sandbox §13; Phase 9 slice H). */
 const EXPORT_EXCLUDE = [
   /^\.env$/,
   /^\.env\..*$/, // .env.local etc. — but KEEP .env.example
@@ -21,8 +21,11 @@ const EXPORT_EXCLUDE = [
   /^\.pytest_cache(\/|$)/,
   /\.pyc$/,
   /\.log$/,
-  /^\.agent_builder\/secrets(\/|$)/,
-  /^\.opencode\/cache(\/|$)/,
+  // Phase 9 slice H: the whole OpenCode/agent-builder working dirs and project
+  // config must never enter the export zip (no prompt / provider config leak).
+  /^\.agent_builder(\/|$)/,
+  /^\.opencode(\/|$)/,
+  /[^/]*opencode[^/]*\.json$/i, // opencode.json, .opencode.json, *opencode*.json
 ];
 
 export function isExportAllowed(relPath: string): boolean {

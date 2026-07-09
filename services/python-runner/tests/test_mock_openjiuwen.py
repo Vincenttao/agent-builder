@@ -23,8 +23,7 @@ def test_1_mock_agent_receives_message_and_returns_structured_reply():
     agent = AgentAdapter().create_agent(_agent_spec())
     r1 = agent.run("你好")
     assert r1["mock"] is True
-    assert r1["reply"]  # turn 1: asks a question
-    assert "问题" in r1["reply"]
+    assert r1["reply"]  # turn 1: an opening reply
 
     r2 = agent.run("我想看看事业")
     assert r2["mock"] is True
@@ -32,6 +31,41 @@ def test_1_mock_agent_receives_message_and_returns_structured_reply():
     # turn 2 calls the tool
     assert len(r2["tool_calls"]) == 1
     assert r2["tool_calls"][0]["name"] == "test_tool"
+
+
+def test_4_generic_agent_reply_has_no_tarot_language():
+    """A non-tarot agent must never leak tarot/presales demo language (Phase 12 §1 #6)."""
+    spec = {
+        "agent_id": "weather_agent",
+        "name": "天气查询 Agent",
+        "system_prompt": "你是一个天气查询助手。",
+        "tools": [
+            {"name": "query_weather", "description": "查询天气", "input_schema": {}, "output_schema": {}},
+        ],
+    }
+    agent = AgentAdapter().create_agent(spec)
+    agent.run("开始")
+    r2 = agent.run("北京今天天气")
+    assert r2["mock"] is True
+    assert r2["reply"]
+    assert r2["tool_calls"][0]["name"] == "query_weather"
+    for word in ("牌", "占卜", "抽牌", "塔罗"):
+        assert word not in r2["reply"], f"generic reply leaked demo word: {word}"
+
+
+def test_5_zero_tool_agent_returns_conversational_reply():
+    spec = {
+        "agent_id": "chat",
+        "name": "聊天 Agent",
+        "system_prompt": "你是一个聊天助手。",
+        "tools": [],
+    }
+    agent = AgentAdapter().create_agent(spec)
+    agent.run("你好")
+    r = agent.run("再聊一句")
+    assert r["mock"] is True
+    assert r["reply"]
+    assert r["tool_calls"] == []
 
 
 def test_2_mock_tool_records_input_and_output():

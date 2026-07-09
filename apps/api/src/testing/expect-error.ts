@@ -16,3 +16,20 @@ export function expectAgentBuilderError(
   expect(err.code).toBe(code);
   return err;
 }
+
+/** Async variant for promises that reject with an AgentBuilderError. */
+export async function expectAgentBuilderErrorAsync(
+  fn: () => Promise<unknown>,
+  code: ErrorCode,
+): Promise<AgentBuilderError> {
+  let caught: unknown;
+  try {
+    await fn();
+  } catch (e) {
+    caught = e;
+  }
+  expect(caught).toBeInstanceOf(AgentBuilderError);
+  const err = caught as AgentBuilderError;
+  expect(err.code).toBe(code);
+  return err;
+}

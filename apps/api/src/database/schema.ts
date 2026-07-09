@@ -46,6 +46,20 @@ export const SCHEMA_SQL = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_versions_gen ON project_versions(generation_id)`,
 
+  `CREATE TABLE IF NOT EXISTS generation_specs (
+    id TEXT PRIMARY KEY,
+    generation_id TEXT NOT NULL UNIQUE,
+    draft_id TEXT,
+    spec_json TEXT NOT NULL,
+    parser_mode TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    prompt_hash TEXT,
+    validation_status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_specs_gen ON generation_specs(generation_id)`,
+
   `CREATE TABLE IF NOT EXISTS run_records (
     id TEXT PRIMARY KEY,
     generation_id TEXT NOT NULL,

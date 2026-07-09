@@ -14,6 +14,7 @@ import { GenerationService } from '../generations/generation.service';
 import { VersionRepository } from '../generations/repositories/version.repository';
 import { EventService } from '../generations/event.service';
 import { CodeGenerationService } from '../codegen/codegen.service';
+import { lintGeneratedProject } from '../codegen/project-lint';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { projectRoot } from '../common/workspace';
 
@@ -43,8 +44,13 @@ export class OrchestratorService {
 
   async runPipeline(generationId: string): Promise<void> {
     try {
-      const spec = this.genService.getSpec(generationId);
-      await this.generate(generationId, spec);
+      // Phase 9: parse runs in the async pipeline (never on the HTTP path) and
+      // is persisted, so a retry does not re-invoke the LLM (§9 test #9).
+      const spec = await this.genService.parseAndPersistSpec(generationId);
+      const projectPath = await this.generate(generationId, spec);
+      // Phase 10 §10 note 6: lint is a gate before the smoke test — a
+      // half-built project or a forbidden-framework import fails fast.
+      lintGeneratedProject(projectPath, spec);
       await this.smokeTest(generationId, spec);
     } catch (err) {
       const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;
@@ -79,6 +85,7 @@ export class OrchestratorService {
             payload: { path: f.path, size: f.size },
           }),
       },
+      this.codegenEngineName(),
     );
 
     const version = this.versionRepo.create({
@@ -96,7 +103,13 @@ export class OrchestratorService {
       generation_id: generationId,
       type: EventType.CommandFinished,
       message: `代码生成完成（${result.files.length} 个文件）`,
-      payload: { phase: 'code_generation', file_count: result.files.length, version_id: version.id },
+      payload: {
+        phase: 'code_generation',
+        file_count: result.files.length,
+        version_id: version.id,
+        engine: result.engine,
+        fallback: result.engine === 'template' && this.codegenEngineName() === 'opencode',
+      },
     });
     return projectPath;
   }
@@ -154,6 +167,12 @@ export class OrchestratorService {
         payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: true },
       });
     }
+  }
+
+  /** The configured codegen engine (§4 / Phase 11 task 3). Defaults to template. */
+  private codegenEngineName(): 'template' | 'opencode' | 'mock' {
+    const e = process.env.CODEGEN_ENGINE ?? 'template';
+    return e === 'opencode' || e === 'mock' ? e : 'template';
   }
 
   /** The most recently created version for a generation (the one under test). */

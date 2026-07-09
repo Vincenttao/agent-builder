@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { GenerationRepository } from './repositories/generation.repository';
 import { VersionRepository } from './repositories/version.repository';
+import { SpecRepository } from './repositories/spec.repository';
 import { EventService } from './event.service';
 import { SpecParserService } from '../spec/spec-parser.service';
 import { SpecValidatorService } from '../spec/spec-validator.service';
@@ -23,10 +25,11 @@ import {
 /**
  * Orchestrates a generation's lifecycle (architecture §5.2).
  *
- * Phase 1: createGeneration metadata + plan_created event.
- * Phase 2: deterministic spec parse + validate (synchronous — fast; the long
- *          generation/test pipeline lands in Phase 6 and runs async).
- * Phase 6: generate → smoke test → version → completed/failed.
+ * Phase 9: createGeneration is now non-blocking — it inserts the generation,
+ * emits plan_created, and returns immediately. The LLM parse (which can take
+ * 5-45s) runs in the async pipeline via parseAndPersistSpec, never on the HTTP
+ * path (plan §2.3 item A / §9 implementation task 7). The parsed Spec is
+ * persisted to generation_specs so getSpec never re-invokes the LLM (§9 note 1).
  */
 @Injectable()
 export class GenerationService {
@@ -38,6 +41,7 @@ export class GenerationService {
     private readonly eventService: EventService,
     private readonly specParser: SpecParserService,
     private readonly specValidator: SpecValidatorService,
+    private readonly specRepo: SpecRepository,
   ) {}
 
   async createGeneration(req: CreateGenerationRequest): Promise<Generation> {
@@ -53,7 +57,8 @@ export class GenerationService {
       mode: req.mode,
     });
 
-    // pending -> planning: emit a plan event and advance state.
+    // pending -> planning: emit a plan event and advance state. Parse happens
+    // later in the async pipeline — the HTTP request returns here (§9 task 7).
     await this.eventService.record({
       generation_id: id,
       type: EventType.PlanCreated,
@@ -62,43 +67,73 @@ export class GenerationService {
     });
     this.genRepo.updateStatus(id, GenerationStatus.Planning);
 
-    // Parse + validate synchronously (deterministic, fast). Failure is a
-    // user-facing 400 — the generation is marked failed and the error thrown.
-    try {
-      const spec = this.specParser.parse(req.prompt, req.type);
-      const validated = this.specValidator.validate(spec) as AgentSpec | WorkflowSpec;
-      const specName = 'name' in validated ? validated.name : title;
-      this.genRepo.updateTitle(id, specName);
-      await this.eventService.record({
-        generation_id: id,
-        type: EventType.Thought,
-        message: `需求已解析为 Spec：${specName}`,
-        payload: { spec: validated as unknown as Record<string, unknown> },
-      });
-    } catch (err) {
-      if (err instanceof AgentBuilderError) {
-        await this.markFailed(id, err.code, err.message);
-        throw err;
-      }
-      throw err;
+    return this.genRepo.getById(id)!;
+  }
+
+  /**
+   * Parse the prompt into a Spec, validate it, and persist it. Idempotent: if a
+   * Spec is already persisted for this generation it is returned without
+   * re-invoking the parser (§9 test #9 — a real LLM must not be re-called).
+   * Emits a thought event carrying the validated Spec and updates the title.
+   */
+  async parseAndPersistSpec(id: string): Promise<AgentSpec | WorkflowSpec> {
+    const existing = this.specRepo.getByGeneration(id);
+    if (existing) return existing.spec;
+
+    const gen = this.genRepo.getById(id);
+    if (!gen) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `生成任务 ${id} 不存在`);
     }
 
-    return this.genRepo.getById(id)!;
+    const result = await this.specParser.parse(gen.user_prompt, gen.type);
+    const validated = this.specValidator.validate(result.spec) as AgentSpec | WorkflowSpec;
+    const specName = 'name' in validated ? validated.name : gen.title;
+
+    this.specRepo.save({
+      generation_id: id,
+      spec: validated,
+      parser_mode: result.parserMode,
+      provider: result.provider,
+      model: result.model,
+      prompt_hash: createHash('sha256').update(gen.user_prompt).digest('hex').slice(0, 16),
+      validation_status: 'valid',
+    });
+
+    this.genRepo.updateTitle(id, specName);
+    await this.eventService.record({
+      generation_id: id,
+      type: EventType.Thought,
+      message: `需求已解析为 Spec：${specName}`,
+      payload: {
+        spec: validated as unknown as Record<string, unknown>,
+        parser_mode: result.parserMode,
+        provider: result.provider,
+        model: result.model,
+      },
+    });
+    return validated;
   }
 
   getById(id: string): Generation | null {
     return this.genRepo.getById(id);
   }
 
-  /** Re-derive the parsed Spec for a generation (deterministic; used by the
-   * orchestrator so createGeneration's signature stays simple). */
+  /** Read the persisted Spec for a generation (never re-parses). Throws if the
+   * async parse has not completed yet — callers should use parseAndPersistSpec
+   * to drive the parse, then this read path is consistent (§9 note 1). */
   getSpec(id: string): AgentSpec | WorkflowSpec {
     const gen = this.genRepo.getById(id);
     if (!gen) {
       throw new AgentBuilderError(ErrorCode.PromptParseFailed, `生成任务 ${id} 不存在`);
     }
-    const spec = this.specParser.parse(gen.user_prompt, gen.type);
-    return this.specValidator.validate(spec) as AgentSpec | WorkflowSpec;
+    const persisted = this.specRepo.getByGeneration(id);
+    if (!persisted) {
+      throw new AgentBuilderError(
+        ErrorCode.PromptParseFailed,
+        `生成任务 ${id} 的 Spec 尚未解析完成`,
+      );
+    }
+    return persisted.spec;
   }
 
   /** Lifecycle transition used by the orchestrator (architecture §11). */

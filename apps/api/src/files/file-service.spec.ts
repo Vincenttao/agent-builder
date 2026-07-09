@@ -21,6 +21,13 @@ describe('file-service (Phase 6 §6.2 #6, Phase 8 security)', () => {
     fs.writeFileSync(path.join(root, 'app.log'), 'log line');
     fs.mkdirSync(path.join(root, '__pycache__'), { recursive: true });
     fs.writeFileSync(path.join(root, '__pycache__', 'x.pyc'), 'pyc');
+    // Phase 9 slice H: OpenCode / LLM artifacts must never leak into exports.
+    fs.mkdirSync(path.join(root, '.agent_builder'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.agent_builder', 'prompt.md'), 'prompt');
+    fs.mkdirSync(path.join(root, '.opencode'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.opencode', 'config.json'), '{}');
+    fs.writeFileSync(path.join(root, 'opencode.json'), '{}');
+    fs.writeFileSync(path.join(root, 'opencode.local.json'), '{}');
   });
   afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -68,6 +75,20 @@ describe('file-service (Phase 6 §6.2 #6, Phase 8 security)', () => {
       expect(isExportAllowed('pyproject.toml')).toBe(true);
       expect(isExportAllowed('tests/test_agent_smoke.py')).toBe(true);
     });
+
+    it('excludes whole .agent_builder/ and .opencode/ dirs (not just secrets/cache) — Phase 9 slice H', () => {
+      expect(isExportAllowed('.agent_builder/prompt.md')).toBe(false);
+      expect(isExportAllowed('.agent_builder/anything')).toBe(false);
+      expect(isExportAllowed('.opencode/config.json')).toBe(false);
+      expect(isExportAllowed('.opencode/anything')).toBe(false);
+    });
+
+    it('excludes opencode.json and *opencode*.json project config — Phase 9 slice H', () => {
+      expect(isExportAllowed('opencode.json')).toBe(false);
+      expect(isExportAllowed('.opencode.json')).toBe(false);
+      expect(isExportAllowed('config/opencode.json')).toBe(false);
+      expect(isExportAllowed('opencode.local.json')).toBe(false);
+    });
   });
 
   describe('scanTree', () => {
@@ -89,6 +110,13 @@ describe('file-service (Phase 6 §6.2 #6, Phase 8 security)', () => {
       expect(files).not.toContain('app.log');
       expect(files.some((f) => f.endsWith('.pyc'))).toBe(false);
       expect(files.some((f) => f.includes('__pycache__'))).toBe(false);
+    });
+
+    it('never lists .agent_builder/, .opencode/, or opencode*.json (Phase 9 slice H)', () => {
+      const files = listExportableFiles(root);
+      expect(files.some((f) => f.startsWith('.agent_builder/'))).toBe(false);
+      expect(files.some((f) => f.startsWith('.opencode/'))).toBe(false);
+      expect(files.some((f) => /opencode.*\.json$/i.test(f))).toBe(false);
     });
   });
 });
