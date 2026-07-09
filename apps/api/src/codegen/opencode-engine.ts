@@ -160,25 +160,33 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       onStderr: onLine('stderr'),
     });
 
-    // Check stderr for opencode errors even when exit code is 0 (opencode may
-    // print "Model not found" etc. and still exit 0).
+    // Scan the generated file tree, excluding our own .agent_builder/ prompt.
+    const files = this.scanProjectFiles(context.projectPath);
+
+    // Check for fatal errors after scanning: only fail if sandbox status is
+    // non-success, OR if stderr has errors AND no files were generated (opencode
+    // may emit non-fatal ERROR log lines from plugins etc. — those are ok if
+    // files were produced).
     let stderrText = '';
     try { stderrText = fs.readFileSync(result.stderrPath, 'utf8'); } catch { /* ok */ }
     const stderrErrors = this.extractOpencodeErrors(stderrText);
+    const noFilesGenerated = files.length === 0;
 
-    if (result.status !== 'success' || stderrErrors) {
-      const reason = stderrErrors
-        ? `OpenCode 错误：${stderrErrors}`
-        : `OpenCode 执行失败 (exit ${result.exitCode})`;
+    if (result.status !== 'success') {
       throw new AgentBuilderError(
         ErrorCode.CodeGenerationFailed,
-        reason,
+        `OpenCode 执行失败 (exit ${result.exitCode})`,
         { jobId: result.jobId, stdoutPath: result.stdoutPath },
       );
     }
 
-    // Scan the generated file tree, excluding our own .agent_builder/ prompt.
-    const files = this.scanProjectFiles(context.projectPath);
+    if (noFilesGenerated && stderrErrors) {
+      throw new AgentBuilderError(
+        ErrorCode.CodeGenerationFailed,
+        `OpenCode 错误：${stderrErrors}`,
+        { jobId: result.jobId, stdoutPath: result.stdoutPath },
+      );
+    }
     for (const file of files) {
       callbacks?.onFile?.(file);
       callbacks?.onEvent?.(
