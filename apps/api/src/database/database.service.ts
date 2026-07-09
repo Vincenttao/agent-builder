@@ -32,7 +32,17 @@ export class DatabaseService {
   migrate(): void {
     const tx = this._db.transaction(() => {
       for (const stmt of SCHEMA_SQL) {
-        this._db.exec(stmt);
+        try {
+          this._db.exec(stmt);
+        } catch (e) {
+          // ALTER TABLE ADD COLUMN throws if the column already exists — safe to ignore.
+          const msg = (e as Error).message;
+          if (msg.includes('duplicate column name') || msg.includes('already exists')) {
+            this.logger.debug(`migration skip: ${msg}`);
+            continue;
+          }
+          throw e;
+        }
       }
     });
     tx();

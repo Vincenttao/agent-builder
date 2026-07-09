@@ -112,4 +112,8 @@ export const SCHEMA_SQL = [
     stderr_path TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_sandbox_gen ON sandbox_jobs(generation_id)`,
+
+  // ─── Phase 14 migration: add retry columns to existing project_versions ───
+  `ALTER TABLE project_versions ADD COLUMN retry_of_version_id TEXT`,
+  `ALTER TABLE project_versions ADD COLUMN retry_index INTEGER NOT NULL DEFAULT 0`,
 ] as const;
