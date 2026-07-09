@@ -45,8 +45,8 @@ export class SandboxService {
     if (this.dockerRunner.isAvailable()) {
       return { runner: 'docker', mock: false };
     }
-    this.logger.warn(
-      `Container runtime unavailable (requested ${requested}); falling back to MockSandboxRunner.`,
+    this.logger.debug(
+      `Container runtime unavailable (requested ${requested}); using MockSandboxRunner.`,
     );
     return { runner: 'mock', mock: true };
   }
