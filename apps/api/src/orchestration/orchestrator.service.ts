@@ -97,6 +97,13 @@ export class OrchestratorService {
             message: `创建文件 ${f.path}`,
             payload: { path: f.path, size: f.size },
           }),
+        onEvent: (type, message, payload) =>
+          this.eventService.record({
+            generation_id: generationId,
+            type: type as EventType,
+            message,
+            payload: (payload ?? {}) as Record<string, unknown>,
+          }),
       },
       engineName,
     );
