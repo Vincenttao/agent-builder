@@ -128,15 +128,23 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const prompt = this.buildPrompt(spec);
     fs.writeFileSync(path.join(promptDir, 'prompt.md'), prompt, 'utf8');
 
+    // Write project-level opencode config so it uses the configured provider.
+    this.writeOpencodeConfig(context.projectPath);
+
     const networkPolicy = this.resolveNetworkPolicy();
     const timeoutSeconds = parseInt(process.env.OPENCODE_TIMEOUT_SECONDS ?? '180', 10);
     const envAllowlist = this.buildEnvAllowlist();
+
+    // Build opencode command with model flag
+    const opencodeModel = process.env.OPENCODE_MODEL ?? 'deepseek-chat';
+    const opencodeProvider = process.env.OPENCODE_PROVIDER ?? 'deepseek';
+    const modelArg = `${opencodeProvider}/${opencodeModel}`;
 
     const result = await this.sandbox.run({
       generationId: context.generationId,
       versionId: context.versionId,
       jobType: JobType.OpencodeGeneration,
-      command: ['opencode', 'run', '--format', 'json', '.agent_builder/prompt.md'],
+      command: ['opencode', 'run', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
       workspacePath: context.projectPath,
       networkPolicy,
       timeoutSeconds,
@@ -144,10 +152,19 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       runtime: SandboxRuntime.Docker,
     });
 
-    if (result.status !== 'success') {
+    // Check stderr for opencode errors even when exit code is 0 (opencode may
+    // print "Model not found" etc. and still exit 0).
+    let stderrText = '';
+    try { stderrText = fs.readFileSync(result.stderrPath, 'utf8'); } catch { /* ok */ }
+    const stderrErrors = this.extractOpencodeErrors(stderrText);
+
+    if (result.status !== 'success' || stderrErrors) {
+      const reason = stderrErrors
+        ? `OpenCode 错误：${stderrErrors}`
+        : `OpenCode 执行失败 (exit ${result.exitCode})`;
       throw new AgentBuilderError(
         ErrorCode.CodeGenerationFailed,
-        `OpenCode 执行失败 (exit ${result.exitCode})`,
+        reason,
         { jobId: result.jobId, stdoutPath: result.stdoutPath },
       );
     }
@@ -181,13 +198,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
   /** Recursively scan the project directory, returning project-relative paths. */
   private scanProjectFiles(projectPath: string): GeneratedFile[] {
     const files: GeneratedFile[] = [];
-    const excludeDir = '.agent_builder';
+    const excludeDirs = new Set(['.agent_builder', '.opencode']);
 
     const walk = (dir: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
-        // Skip our own prompt directory.
-        if (entry.name === excludeDir && entry.isDirectory()) continue;
+        // Skip our own metadata dirs.
+        if (excludeDirs.has(entry.name) && entry.isDirectory()) continue;
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           walk(fullPath);
@@ -212,6 +229,59 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     return NetworkPolicy.Controlled; // real mode requires a non-none policy
   }
 
+  /** Scan opencode stderr for error patterns and return a user-facing message. */
+  private extractOpencodeErrors(stderr: string): string | null {
+    if (!stderr.trim()) return null;
+    const lines = stderr.split('\n').filter((l) =>
+      /error|Error|not found|Model not/i.test(l) && !/^\s*$/.test(l),
+    );
+    if (lines.length === 0) return null;
+    this.logger.warn(`opencode stderr: ${lines.join(' | ')}`);
+    // Return the first meaningful error line
+    const first = lines.find((l) => l.length > 10);
+    return first ? first.trim().slice(0, 200) : lines[0].trim().slice(0, 200);
+  }
+
+  /**
+   * Write a project-level opencode config so opencode uses the configured
+   * provider/model instead of the global ~/.config/opencode/opencode.json.
+   * The file is written inside the project workspace (never contains secrets
+   * that aren't already in env vars — the env injects the actual key).
+   */
+  private writeOpencodeConfig(projectPath: string): void {
+    const provider = process.env.OPENCODE_PROVIDER ?? 'deepseek';
+    const model = process.env.OPENCODE_MODEL ?? 'deepseek-chat';
+    const baseUrl = process.env.OPENCODE_BASE_URL ?? 'https://api.deepseek.com/v1';
+
+    const config = {
+      provider: {
+        [provider]: {
+          // @ai-sdk/openai-compatible works with any OpenAI-compatible API including DeepSeek
+          npm: '@ai-sdk/openai-compatible',
+          name: provider,
+          options: {
+            baseURL: baseUrl,
+          },
+          models: {
+            [model]: {
+              name: model,
+              modalities: { input: ['text'], output: ['text'] },
+              limit: { context: 131072, output: 8192 },
+            },
+          },
+        },
+      },
+    };
+
+    const configDir = path.join(projectPath, '.opencode');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'config.json'),
+      JSON.stringify(config, null, 2),
+      'utf8',
+    );
+  }
+
   /** Collect configured opencode env vars to inject into the sandbox. */
   private buildEnvAllowlist(): Record<string, string> {
     const map: Record<string, string> = {};
@@ -219,6 +289,11 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     for (const key of keys) {
       const val = process.env[key];
       if (val) map[key] = val;
+    }
+    // The AI SDK reads OPENAI_API_KEY for @ai-sdk/openai-compatible providers.
+    // Propagate our key so opencode in the sandbox can auth to the LLM.
+    if (map['OPENCODE_API_KEY']) {
+      map['OPENAI_API_KEY'] = map['OPENCODE_API_KEY'];
     }
     return map;
   }

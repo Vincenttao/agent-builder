@@ -149,7 +149,9 @@ describe('OpenCodeEngine', () => {
       expect(runMock).toHaveBeenCalledTimes(1);
       const runReq = runMock.mock.calls[0][0];
       expect(runReq.jobType).toBe(JobType.OpencodeGeneration);
-      expect(runReq.command).toEqual(['opencode', 'run', '--format', 'json', '.agent_builder/prompt.md']);
+      expect(runReq.command).toEqual([
+        'opencode', 'run', '--model', 'deepseek/deepseek-chat', '--format', 'json', '.agent_builder/prompt.md',
+      ]);
       expect(runReq.workspacePath).toBe(projectPath);
       expect(runReq.networkPolicy).toBe(NetworkPolicy.Controlled);
 
@@ -234,7 +236,7 @@ describe('OpenCodeEngine', () => {
   // File scanning
   // ---------------------------------------------------------------------------
   describe('scanProjectFiles', () => {
-    it('excludes .agent_builder/ directory', () => {
+    it('excludes .agent_builder/ and .opencode/ directories', () => {
       // Access the private method via bracket notation for testing.
       const templateEngine = new TemplateEngine();
       const sandbox = buildSandboxService();
@@ -244,6 +246,8 @@ describe('OpenCodeEngine', () => {
       const projectPath = tmpProject();
       fs.mkdirSync(path.join(projectPath, '.agent_builder'), { recursive: true });
       fs.writeFileSync(path.join(projectPath, '.agent_builder', 'prompt.md'), 'p');
+      fs.mkdirSync(path.join(projectPath, '.opencode'), { recursive: true });
+      fs.writeFileSync(path.join(projectPath, '.opencode', 'config.json'), '{}');
       fs.writeFileSync(path.join(projectPath, 'README.md'), 'r');
       fs.mkdirSync(path.join(projectPath, 'src'), { recursive: true });
       fs.writeFileSync(path.join(projectPath, 'src', 'main.py'), 'm');
@@ -253,6 +257,7 @@ describe('OpenCodeEngine', () => {
       expect(paths).toContain('README.md');
       expect(paths).toContain('src/main.py');
       expect(paths).not.toContain(expect.stringContaining('.agent_builder'));
+      expect(paths).not.toContain(expect.stringContaining('.opencode'));
 
       fs.rmSync(projectPath, { recursive: true, force: true });
     });
@@ -313,11 +318,15 @@ describe('OpenCodeEngine', () => {
       expect(build()).toEqual({});
     });
 
-    it('includes only configured opencode vars', () => {
+    it('includes only configured opencode vars, plus propagated OPENAI_API_KEY', () => {
       process.env.OPENCODE_API_KEY = 'sk-test';
       process.env.OPENCODE_MODEL = 'gpt-4';
       const map = build();
-      expect(map).toEqual({ OPENCODE_API_KEY: 'sk-test', OPENCODE_MODEL: 'gpt-4' });
+      expect(map).toEqual({
+        OPENCODE_API_KEY: 'sk-test',
+        OPENCODE_MODEL: 'gpt-4',
+        OPENAI_API_KEY: 'sk-test',
+      });
     });
 
     it('does not pass through unrelated env vars', () => {
