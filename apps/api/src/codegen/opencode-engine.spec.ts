@@ -312,20 +312,28 @@ describe('OpenCodeEngine', () => {
       delete process.env.OPENCODE_BASE_URL;
       delete process.env.OPENCODE_MODEL;
       delete process.env.OPENCODE_PROVIDER;
+      delete process.env.DEEPSEEK_API_KEY;
+      delete process.env.DEEPSEEK_BASE_URL;
     });
 
     it('returns empty map when no opencode env vars are set', () => {
       expect(build()).toEqual({});
     });
 
-    it('includes only configured opencode vars, plus propagated OPENAI_API_KEY', () => {
+    it('propagates OPENAI_API_KEY and provider-specific DEEPSEEK_API_KEY', () => {
       process.env.OPENCODE_API_KEY = 'sk-test';
       process.env.OPENCODE_MODEL = 'gpt-4';
+      process.env.OPENCODE_PROVIDER = 'deepseek';
+      process.env.OPENCODE_BASE_URL = 'https://api.deepseek.com/v1';
       const map = build();
       expect(map).toEqual({
         OPENCODE_API_KEY: 'sk-test',
         OPENCODE_MODEL: 'gpt-4',
+        OPENCODE_PROVIDER: 'deepseek',
+        OPENCODE_BASE_URL: 'https://api.deepseek.com/v1',
         OPENAI_API_KEY: 'sk-test',
+        DEEPSEEK_API_KEY: 'sk-test',
+        DEEPSEEK_BASE_URL: 'https://api.deepseek.com/v1',
       });
     });
 
