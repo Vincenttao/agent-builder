@@ -5,6 +5,7 @@ import path from 'node:path';
 import { SandboxRuntime, SandboxJobStatus } from '@agent-builder/shared-contracts';
 import type { SandboxRunner, SandboxRunRequest, SandboxRunResult } from './sandbox-runner';
 import { buildDockerArgs } from './docker-command-builder';
+import { redactBuffer } from './redact';
 
 const DEFAULT_IMAGE = 'agent-builder-sandbox:latest';
 const DEFAULT_TIMEOUT_SECONDS = 120;
@@ -70,8 +71,8 @@ export class DockerSandboxRunner implements SandboxRunner {
 
       const done = (status: SandboxJobStatus, exitCode: number | null) => {
         try {
-          fs.writeFileSync(stdoutPath, Buffer.concat(stdoutChunks));
-          fs.writeFileSync(stderrPath, Buffer.concat(stderrChunks));
+          fs.writeFileSync(stdoutPath, redactBuffer(Buffer.concat(stdoutChunks)));
+          fs.writeFileSync(stderrPath, redactBuffer(Buffer.concat(stderrChunks)));
         } catch (e) {
           this.logger.warn(`failed to write run logs: ${(e as Error).message}`);
         }

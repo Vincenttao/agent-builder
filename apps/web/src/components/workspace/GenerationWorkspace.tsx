@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { GenerationDto, FileTreeNode, FileContentResponse } from '@agent-builder/shared-contracts';
-import { GenerationStatus } from '@agent-builder/shared-contracts';
+import { EventType, GenerationStatus } from '@agent-builder/shared-contracts';
 import { getGeneration, getFileTree, getFileContent, exportProject, exportDownloadUrl } from '@/lib/api';
 import { useGenerationEvents } from '@/lib/use-generation-events';
 import { GenerationTimeline } from '@/components/workspace/GenerationTimeline';
@@ -36,13 +36,19 @@ export function GenerationWorkspace({ id }: { id: string }) {
     getGeneration(id).then(setGen).catch(() => undefined);
   }, [id]);
 
-  // Load the file tree once files exist (generating or later).
-  const showFiles = status && ![GenerationStatus.Pending, GenerationStatus.Planning, null].includes(status as never);
-  useEffect(() => {
-    if (showFiles && tree.length === 0) {
-      getFileTree(id).then(setTree).catch(() => undefined);
+  // Refresh the file tree as generation events arrive. A single early fetch can
+  // race with file writes and leave the Source tab empty after completion.
+  const showFiles = Boolean(status && ![GenerationStatus.Pending, GenerationStatus.Planning].includes(status));
+  const fileEventWatermark = events.reduce((latest, event) => {
+    if (event.type === EventType.FileCreated || event.type === EventType.FileUpdated) {
+      return Math.max(latest, event.sequence);
     }
-  }, [id, showFiles, tree.length]);
+    return latest;
+  }, 0);
+  useEffect(() => {
+    if (!showFiles) return;
+    getFileTree(id).then(setTree).catch(() => undefined);
+  }, [id, showFiles, status, tab, fileEventWatermark]);
 
   async function selectFile(path: string) {
     setSelectedPath(path);

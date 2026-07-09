@@ -40,6 +40,10 @@ coverage/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+apps/*/test-results/
+apps/*/playwright-report/
+apps/*/blob-report/
+apps/*/playwright/.cache/
 
 # Workspace runtime data (gitignored per P0 plan §2)
 workspace/generated/
