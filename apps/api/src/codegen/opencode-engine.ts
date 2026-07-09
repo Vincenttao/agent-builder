@@ -128,9 +128,6 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const prompt = this.buildPrompt(spec);
     fs.writeFileSync(path.join(promptDir, 'prompt.md'), prompt, 'utf8');
 
-    // Write project-level opencode config so it uses the configured provider.
-    this.writeOpencodeConfig(context.projectPath);
-
     const networkPolicy = this.resolveNetworkPolicy();
     const timeoutSeconds = parseInt(process.env.OPENCODE_TIMEOUT_SECONDS ?? '180', 10);
     const envAllowlist = this.buildEnvAllowlist();
@@ -240,46 +237,6 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     // Return the first meaningful error line
     const first = lines.find((l) => l.length > 10);
     return first ? first.trim().slice(0, 200) : lines[0].trim().slice(0, 200);
-  }
-
-  /**
-   * Write a project-level opencode config so opencode uses the configured
-   * provider/model instead of the global ~/.config/opencode/opencode.json.
-   * The file is written inside the project workspace (never contains secrets
-   * that aren't already in env vars — the env injects the actual key).
-   */
-  private writeOpencodeConfig(projectPath: string): void {
-    const provider = process.env.OPENCODE_PROVIDER ?? 'deepseek';
-    const model = process.env.OPENCODE_MODEL ?? 'deepseek-chat';
-    const baseUrl = process.env.OPENCODE_BASE_URL ?? 'https://api.deepseek.com/v1';
-
-    const config = {
-      provider: {
-        [provider]: {
-          // @ai-sdk/openai-compatible works with any OpenAI-compatible API including DeepSeek
-          npm: '@ai-sdk/openai-compatible',
-          name: provider,
-          options: {
-            baseURL: baseUrl,
-          },
-          models: {
-            [model]: {
-              name: model,
-              modalities: { input: ['text'], output: ['text'] },
-              limit: { context: 131072, output: 8192 },
-            },
-          },
-        },
-      },
-    };
-
-    const configDir = path.join(projectPath, '.opencode');
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(configDir, 'config.json'),
-      JSON.stringify(config, null, 2),
-      'utf8',
-    );
   }
 
   /** Collect configured opencode env vars to inject into the sandbox. */
