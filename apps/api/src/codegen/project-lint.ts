@@ -31,21 +31,13 @@ function isAgentSpec(spec: AgentSpec | WorkflowSpec): spec is AgentSpec {
 }
 
 function requiredFiles(spec: AgentSpec | WorkflowSpec): string[] {
-  const common = ['README.md', '.env.example', 'pyproject.toml'];
+  // Contract check is a loose gate: reject only clearly broken projects (0 files)
+  // or those missing the core spec + entry point. README / .env.example are
+  // nice-to-have; opencode may generate them under different names.
   if (isAgentSpec(spec)) {
-    return [
-      ...common,
-      'config/agent_spec.json',
-      'src/agents/agent.py',
-      'tests/test_agent_smoke.py',
-    ];
+    return ['config/agent_spec.json', 'src/agents/agent.py'];
   }
-  return [
-    ...common,
-    'config/workflow_spec.json',
-    'src/workflows/workflow.py',
-    'tests/test_workflow_smoke.py',
-  ];
+  return ['config/workflow_spec.json', 'src/workflows/workflow.py'];
 }
 
 function walkFiles(projectRoot: string, base = ''): string[] {

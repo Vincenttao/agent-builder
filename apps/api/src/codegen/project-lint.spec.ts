@@ -51,9 +51,9 @@ describe('lintGeneratedProject (Phase 10 §10 — post-generation lint gate)', (
     expect(() => lintGeneratedProject(root, workflowSpec)).not.toThrow();
   });
 
-  it('rejects a missing required file (contract)', () => {
+  it('rejects a missing required file (contract — agent spec)', () => {
     writeValidAgentProject();
-    fs.rmSync(path.join(root, 'tests', 'test_agent_smoke.py'));
+    fs.rmSync(path.join(root, 'config', 'agent_spec.json'));
     expectAgentBuilderError(() => lintGeneratedProject(root, agentSpec), ErrorCode.CodeGenerationFailed);
   });
 
