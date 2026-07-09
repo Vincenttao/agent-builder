@@ -52,6 +52,8 @@ workspace/runs/
 workspace/logs/
 workspace/*.db
 workspace/*.db-journal
+workspace/*.db-shm
+workspace/*.db-wal
 
 # misc logs
 *.log

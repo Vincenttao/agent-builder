@@ -78,6 +78,14 @@ npm run typecheck     # tsc --noEmit（各 workspace）
 
 > 主服务进程不直接执行生成代码：所有 `python` / `pytest` / 生成物执行经 `SandboxService` 调度（架构 §5.6/§5.7）。
 
+## P0 验收
+
+P0 全部验收检查点通过（136 测试：后端 91 + 契约 15 + 前端 20 + Python 8 + E2E 2；lint/typecheck 全绿）。详细结果见 `docs/technical/p0_acceptance_report.md`。
+
+```bash
+npm run test:e2e   # 启动 API(:3001) + Web(:3000) 并跑两条 Playwright 链路
+```
+
 ## 设计文档
 
 - `docs/prd/PRD-v0.3-agent-builder.md`
