@@ -50,6 +50,21 @@ npm run dev:api:llm
 # 健康检查：curl http://localhost:3001/health
 ```
 
+### OpenCode 模型配置
+
+真实 OpenCode 生成需要 opencode ≥ 1.14 并配置 DeepSeek provider（一次性）：
+
+```bash
+# 执行此命令，将 DeepSeek provider 写入 opencode 全局配置
+node -e "
+const fs=require('fs'); const p=require('path');
+const f=p.join(process.env.HOME,'.config/opencode/opencode.json');
+const c=JSON.parse(fs.readFileSync(f,'utf8'));
+c.provider={deepseek:{npm:'@ai-sdk/openai-compatible',name:'DeepSeek',options:{baseURL:'https://api.deepseek.com/v1'},models:{'deepseek-chat':{name:'DeepSeek Chat',modalities:{input:['text'],output:['text']},limit:{context:131072,output:8192}}}},...c.provider};
+fs.writeFileSync(f,JSON.stringify(c,null,2));
+"
+```
+
 前端（Next.js，端口 3000）：
 
 ```bash
