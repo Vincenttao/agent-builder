@@ -38,8 +38,11 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
     args.push('--runtime=runsc');
   }
 
-  // #2 default network policy = none; never `--network host` or open.
-  args.push('--network', network === NetworkPolicy.None ? 'none' : network);
+  // #2 network policy: none = fully isolated; else default bridge (outbound ok).
+  if (network === NetworkPolicy.None) {
+    args.push('--network', 'none');
+  }
+  // controlled / openjiuwen_only → Docker default bridge (internet access, isolated)
 
   // #3 resource limits: CPU, memory, pids.
   args.push('--cpus', String(limits.cpus));
