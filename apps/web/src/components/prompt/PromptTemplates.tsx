@@ -1,0 +1,58 @@
+'use client';
+
+const TEMPLATES = [
+  {
+    title: '天气查询 Agent',
+    type: 'agent' as const,
+    prompt: '做一个天气查询 Agent，用户输入城市名，调用 get_weather 工具返回该城市的实时天气（温度、湿度、风力），并给出穿衣建议。',
+  },
+  {
+    title: '简历优化 Agent',
+    type: 'agent' as const,
+    prompt: '做一个简历优化 Agent，用户上传简历文本，调用 analyze_resume 工具分析简历亮点和不足，调用 suggest_improvements 工具给出具体修改建议，最后输出优化后的简历。',
+  },
+  {
+    title: '会议纪要 Agent',
+    type: 'agent' as const,
+    prompt: '做一个会议纪要 Agent，用户输入会议录音转写文本，调用 extract_topics 工具提取议题，调用 summarize_decisions 工具总结决议和待办事项，最后生成结构化会议纪要。',
+  },
+  {
+    title: '合同审核 Workflow',
+    type: 'workflow' as const,
+    prompt: '做一个合同审核 Workflow：输入合同文本 -> 提取关键条款（金额、期限、违约责任） -> 逐条风险评估 -> 生成审核报告。',
+  },
+  {
+    title: '客诉分级 Workflow',
+    type: 'workflow' as const,
+    prompt: '做一个客诉分级 Workflow：输入客户投诉内容 -> 分析严重程度和影响范围 -> 按优先级分级（紧急/高/中/低） -> 分配处理建议 -> 生成分级报告。',
+  },
+  {
+    title: '内容审核 Workflow',
+    type: 'workflow' as const,
+    prompt: '做一个内容审核 Workflow：输入待审核文本 -> 检查违规内容（色情、暴力、政治敏感） -> 检查广告营销内容 -> 综合打分 -> 输出审核结论和修改建议。',
+  },
+];
+
+export function PromptTemplates({
+  onSelect,
+}: {
+  onSelect: (template: { prompt: string; type: 'agent' | 'workflow' }) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="prompt-templates">
+      {TEMPLATES.map((t) => (
+        <button
+          key={t.title}
+          type="button"
+          onClick={() => onSelect({ prompt: t.prompt, type: t.type })}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 transition-colors hover:border-brand hover:bg-brand/5 hover:text-brand"
+          data-testid="template-chip"
+        >
+          {t.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export { TEMPLATES };

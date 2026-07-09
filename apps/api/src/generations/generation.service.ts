@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { GenerationRepository } from './repositories/generation.repository';
 import { VersionRepository } from './repositories/version.repository';
@@ -213,6 +215,57 @@ export class GenerationService {
     return this.versionRepo.getById(gen.active_version_id);
   }
 
+  /** Phase 14: list generations with optional status filter and pagination. */
+  listGenerations(filter?: { status?: string; limit?: number; offset?: number }) {
+    return this.genRepo.list(filter);
+  }
+
+  /** Phase 14: like getById but throws NotFoundException. */
+  getByIdOrThrow(id: string): Generation {
+    const gen = this.genRepo.getById(id);
+    if (!gen) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `生成任务 ${id} 不存在`);
+    }
+    return gen;
+  }
+
+  /** Phase 14: list all versions for a generation. */
+  listVersions(generationId: string): ProjectVersion[] {
+    return this.versionRepo.listByGeneration(generationId);
+  }
+
+  /** Phase 14: compute diff between two versions. */
+  diffVersions(
+    _generationId: string,
+    baseVersionId: string,
+    targetVersionId: string,
+  ): { files: { path: string; status: string; diff?: string }[] } {
+    const base = this.versionRepo.getById(baseVersionId);
+    const target = this.versionRepo.getById(targetVersionId);
+    if (!base || !target) {
+      throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, '版本不存在');
+    }
+    return computeVersionDiff(base.project_path, target.project_path);
+  }
+
+  /** Phase 14: activate a version (must have test_status=passed). */
+  activateVersion(generationId: string, versionId: string): ProjectVersion {
+    const version = this.versionRepo.getById(versionId);
+    if (!version || version.generation_id !== generationId) {
+      throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, '版本不存在');
+    }
+    if (version.test_status !== TestStatus.Passed) {
+      throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, '只能激活测试通过的版本');
+    }
+    this.genRepo.setActiveVersion(generationId, versionId, version.project_path);
+    return version;
+  }
+
+  /** Phase 14: count existing versions to determine retry index for repair. */
+  countVersions(generationId: string): number {
+    return this.versionRepo.listByGeneration(generationId).length;
+  }
+
   private deriveTitle(prompt: string, type: string): string {
     const trimmed = prompt.trim().replace(/\s+/g, ' ');
     const suffix = type === 'workflow' ? 'Workflow' : 'Agent';
@@ -220,4 +273,113 @@ export class GenerationService {
     const slice = trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed;
     return slice;
   }
+}
+
+/** Simple line-by-line diff for two directory trees. */
+function computeVersionDiff(
+  basePath: string,
+  targetPath: string,
+): { files: { path: string; status: string; diff?: string }[] } {
+  const baseFiles = scanRelative(basePath);
+  const targetFiles = scanRelative(targetPath);
+
+  const allPaths = new Set([...baseFiles.keys(), ...targetFiles.keys()]);
+  const results: { path: string; status: string; diff?: string }[] = [];
+
+  for (const rel of [...allPaths].sort()) {
+    const inBase = baseFiles.has(rel);
+    const inTarget = targetFiles.has(rel);
+
+    if (!inBase && inTarget) {
+      results.push({ path: rel, status: 'added' });
+    } else if (inBase && !inTarget) {
+      results.push({ path: rel, status: 'deleted' });
+    } else {
+      const baseContent = fs.readFileSync(path.join(basePath, rel));
+      const targetContent = fs.readFileSync(path.join(targetPath, rel));
+      if (baseContent.equals(targetContent)) {
+        results.push({ path: rel, status: 'unchanged' });
+      } else if (isBinary(baseContent)) {
+        results.push({ path: rel, status: 'binary' });
+      } else {
+        const diff = lineDiff(
+          baseContent.toString('utf8'),
+          targetContent.toString('utf8'),
+        );
+        results.push({ path: rel, status: 'modified', diff });
+      }
+    }
+  }
+
+  return { files: results };
+}
+
+function scanRelative(dir: string): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!fs.existsSync(dir)) return map;
+
+  const walk = (current: string) => {
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(current, e.name);
+      if (e.isDirectory()) {
+        if (e.name === '.agent_builder') continue;
+        walk(full);
+      } else {
+        const rel = path.relative(dir, full).split(path.sep).join('/');
+        map.set(rel, full);
+      }
+    }
+  };
+  walk(dir);
+  return map;
+}
+
+function isBinary(buf: Buffer): boolean {
+  return buf.slice(0, 1024).includes(0);
+}
+
+function lineDiff(base: string, target: string): string {
+  const baseLines = base.split('\n');
+  const targetLines = target.split('\n');
+  // Simple LCS-based diff
+  const lcs = longestCommonSubsequence(baseLines, targetLines);
+  const hunks: string[] = [];
+  let bi = 0, ti = 0, li = 0;
+  while (bi < baseLines.length || ti < targetLines.length) {
+    while (li < lcs.length && bi < baseLines.length && baseLines[bi] !== lcs[li]) {
+      hunks.push(`-${baseLines[bi]}`);
+      bi++;
+    }
+    while (li < lcs.length && ti < targetLines.length && targetLines[ti] !== lcs[li]) {
+      hunks.push(`+${targetLines[ti]}`);
+      ti++;
+    }
+    if (li < lcs.length) {
+      hunks.push(` ${lcs[li]}`);
+      bi++; ti++; li++;
+    } else {
+      while (bi < baseLines.length) { hunks.push(`-${baseLines[bi]}`); bi++; }
+      while (ti < targetLines.length) { hunks.push(`+${targetLines[ti]}`); ti++; }
+    }
+  }
+  return hunks.join('\n');
+}
+
+function longestCommonSubsequence(a: string[], b: string[]): string[] {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const result: string[] = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { result.unshift(a[i - 1]); i--; j--; }
+    else if (dp[i - 1][j] > dp[i][j - 1]) { i--; }
+    else { j--; }
+  }
+  return result;
 }

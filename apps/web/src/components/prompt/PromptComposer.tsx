@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { GenerationType } from '@agent-builder/shared-contracts';
+import { PromptTemplates } from './PromptTemplates';
 
 const TYPE_OPTIONS: { value: GenerationType; label: string; hint: string }[] = [
   { value: GenerationType.Agent, label: '智能体', hint: '对话式 Agent' },
@@ -33,6 +34,11 @@ export function PromptComposer() {
 
   function fillExample() {
     setPrompt(EXAMPLES[type]);
+  }
+
+  function handleSelectTemplate(template: { prompt: string; type: 'agent' | 'workflow' }) {
+    setType(template.type === 'workflow' ? GenerationType.Workflow : GenerationType.Agent);
+    setPrompt(template.prompt);
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -86,6 +92,8 @@ export function PromptComposer() {
           );
         })}
       </div>
+
+      <PromptTemplates onSelect={handleSelectTemplate} />
 
       <label htmlFor="prompt" className="sr-only">
         自然语言需求

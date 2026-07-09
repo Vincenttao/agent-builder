@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Param,
   Body,
   Query,
@@ -19,10 +20,19 @@ import { ExportService } from './export.service';
 import { scanTree, readFileSafe, PathSafetyError } from '../files/file-service';
 import {
   createGenerationRequestSchema,
+  createDraftRequestSchema,
+  updateDraftSpecSchema,
+  repairRequestSchema,
   agentRunRequestSchema,
   workflowRunRequestSchema,
   type CreateGenerationRequest,
   type CreateGenerationResponse,
+  type CreateDraftRequest,
+  type UpdateDraftSpecRequest,
+  type DraftResponse,
+  type ConfirmDraftResponse,
+  type RepairRequest,
+  type RepairResponse,
   type AgentRunRequest,
   type WorkflowRunRequest,
   type RunnerResult,
@@ -105,6 +115,54 @@ export class OrchestratorController {
   @Post(':id/exports')
   export(@Param('id') id: string): Promise<CreateExportResponse> {
     return this.exportService.create(id);
+  }
+
+  // ─── Phase 14: Repair ────────────────────────────────────────────
+
+  @Post(':id/repair')
+  async repair(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(repairRequestSchema)) body: RepairRequest,
+  ): Promise<RepairResponse> {
+    return this.orchestrator.repair(id, body.instruction);
+  }
+
+  // ─── Phase 14: Version activate ──────────────────────────────────
+
+  @Post(':id/versions/:versionId/activate')
+  activateVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+  ) {
+    const version = this.genService.activateVersion(id, versionId);
+    return { version_id: version.id, version_label: version.version_label, active: true };
+  }
+
+  // ─── Phase 15: Draft / Confirm ───────────────────────────────────
+
+  @Post('drafts')
+  async createDraft(
+    @Body(new ZodValidationPipe(createDraftRequestSchema)) body: CreateDraftRequest,
+  ): Promise<DraftResponse> {
+    return this.orchestrator.createDraft(body);
+  }
+
+  @Get('drafts/:draftId')
+  async getDraft(@Param('draftId') draftId: string): Promise<DraftResponse> {
+    return this.orchestrator.getDraft(draftId);
+  }
+
+  @Put('drafts/:draftId/spec')
+  async updateDraftSpec(
+    @Param('draftId') draftId: string,
+    @Body(new ZodValidationPipe(updateDraftSpecSchema)) body: UpdateDraftSpecRequest,
+  ): Promise<DraftResponse> {
+    return this.orchestrator.updateDraftSpec(draftId, body.spec);
+  }
+
+  @Post('drafts/:draftId/confirm')
+  async confirmDraft(@Param('draftId') draftId: string): Promise<ConfirmDraftResponse> {
+    return this.orchestrator.confirmDraft(draftId);
   }
 }
 

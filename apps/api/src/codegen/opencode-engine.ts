@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { AgentSpec, WorkflowSpec } from '@agent-builder/shared-contracts';
-import { EventType } from '@agent-builder/shared-contracts';
+import {
+  EventType,
+  JobType,
+  SandboxRuntime,
+  NetworkPolicy,
+  ErrorCode,
+  AgentBuilderError,
+} from '@agent-builder/shared-contracts';
 import type {
   CodeGenerationEngine,
   GenerationContext,
@@ -12,22 +19,25 @@ import type {
   GeneratedFile,
 } from './engine';
 import { TemplateEngine } from './template-engine';
+import { SandboxService } from '../sandbox/sandbox.service';
 
 /**
- * OpenCodeEngine — calls `opencode run` / task-level `opencode serve` to
- * generate or modify code (architecture §2.3, §5.5, runtime_and_sandbox §10).
+ * OpenCodeEngine — calls `opencode run` via SandboxService to generate code
+ * (architecture §2.3, §5.5, runtime_and_sandbox §10).
  *
  * P0 constraint: OpenCode is the code-generation execution layer, NOT the
  * Agent/Workflow runtime — generated code still targets the OpenJiuwen adapter
  * (P0 plan §8.5 note 1). OpenCode may not pick LangGraph/CrewAI/Dify (note 2).
  *
- * Two modes:
- *  - mockMode (default, P0 — opencode unavailable): emits opencode_started /
+ * Three modes:
+ *  - mock (requireReal=false, default): emits opencode_started /
  *    opencode_file_changed / opencode_finished around a TemplateEngine run,
  *    so the event mapping is exercised without a real opencode binary.
- *  - real mode (requireReal=true): if opencode is available it would invoke
- *    `opencode run`; if unavailable it FALLS BACK to TemplateEngine
- *    (P0 plan §8.2 test #4) with a warning event.
+ *  - fallback (requireReal=true, opencode unavailable): delegates to
+ *    TemplateEngine with a warning event (P0 plan §8.2 test #4).
+ *  - real (requireReal=true, opencode available): executes `opencode run`
+ *    via SandboxService, scans the generated file tree, and emits
+ *    opencode_* events (Phase 10).
  */
 @Injectable()
 export class OpenCodeEngine implements CodeGenerationEngine {
@@ -36,6 +46,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
 
   constructor(
     private readonly templateEngine: TemplateEngine,
+    private readonly sandbox: SandboxService,
     private readonly requireReal: boolean = false,
   ) {}
 
@@ -52,8 +63,11 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     context: GenerationContext,
     callbacks?: GenerationCallbacks,
   ): Promise<GenerationResult> {
-    // #4: real mode + opencode unavailable -> reliable TemplateEngine fallback.
-    if (this.requireReal && !this.isOpencodeAvailable()) {
+    if (!this.requireReal) {
+      return this.generateMock(spec, context, callbacks);
+    }
+
+    if (!this.isOpencodeAvailable()) {
       this.logger.warn('OpenCode unavailable — falling back to TemplateEngine.');
       callbacks?.onEvent?.(
         EventType.OpencodeFinished,
@@ -63,10 +77,18 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       return this.templateEngine.generate(spec, context, callbacks);
     }
 
-    // mock-opencode flow (P0): emit opencode_* events around template generation.
+    return this.generateReal(spec, context, callbacks);
+  }
+
+  /** Mock mode (P0): emit opencode_* events around a TemplateEngine run. */
+  private async generateMock(
+    spec: AgentSpec | WorkflowSpec,
+    context: GenerationContext,
+    callbacks?: GenerationCallbacks,
+  ): Promise<GenerationResult> {
     callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动', { mock: true });
 
-    // prompt written to /workspace/.agent_builder/prompt.md (runtime_and_sandbox §10.1).
+    // prompt written to .agent_builder/prompt.md (runtime_and_sandbox §10.1).
     const promptDir = path.join(context.projectPath, '.agent_builder');
     fs.mkdirSync(promptDir, { recursive: true });
     const prompt = this.buildPrompt(spec);
@@ -90,6 +112,115 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     );
 
     return { ...result, engine: 'opencode' };
+  }
+
+  /** Real mode (Phase 10): execute `opencode run` via SandboxService. */
+  private async generateReal(
+    spec: AgentSpec | WorkflowSpec,
+    context: GenerationContext,
+    callbacks?: GenerationCallbacks,
+  ): Promise<GenerationResult> {
+    callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动', { mock: false });
+
+    // Write the prompt for opencode to read.
+    const promptDir = path.join(context.projectPath, '.agent_builder');
+    fs.mkdirSync(promptDir, { recursive: true });
+    const prompt = this.buildPrompt(spec);
+    fs.writeFileSync(path.join(promptDir, 'prompt.md'), prompt, 'utf8');
+
+    const networkPolicy = this.resolveNetworkPolicy();
+    const timeoutSeconds = parseInt(process.env.OPENCODE_TIMEOUT_SECONDS ?? '180', 10);
+    const envAllowlist = this.buildEnvAllowlist();
+
+    const result = await this.sandbox.run({
+      generationId: context.generationId,
+      versionId: context.versionId,
+      jobType: JobType.OpencodeGeneration,
+      command: ['opencode', 'run', '--format', 'json', '.agent_builder/prompt.md'],
+      workspacePath: context.projectPath,
+      networkPolicy,
+      timeoutSeconds,
+      envAllowlist,
+      runtime: SandboxRuntime.Docker,
+    });
+
+    if (result.status !== 'success') {
+      throw new AgentBuilderError(
+        ErrorCode.CodeGenerationFailed,
+        `OpenCode 执行失败 (exit ${result.exitCode})`,
+        { jobId: result.jobId, stdoutPath: result.stdoutPath },
+      );
+    }
+
+    // Scan the generated file tree, excluding our own .agent_builder/ prompt.
+    const files = this.scanProjectFiles(context.projectPath);
+    for (const file of files) {
+      callbacks?.onFile?.(file);
+      callbacks?.onEvent?.(
+        EventType.OpencodeFileChanged,
+        `OpenCode 写入文件 ${file.path}`,
+        { path: file.path, mock: result.mock },
+      );
+    }
+
+    callbacks?.onEvent?.(
+      EventType.OpencodeFinished,
+      'OpenCode 会话结束',
+      { mock: result.mock, file_count: files.length },
+    );
+
+    return {
+      engine: 'opencode',
+      projectPath: context.projectPath,
+      files,
+      warnings: [],
+      mock: result.mock,
+    };
+  }
+
+  /** Recursively scan the project directory, returning project-relative paths. */
+  private scanProjectFiles(projectPath: string): GeneratedFile[] {
+    const files: GeneratedFile[] = [];
+    const excludeDir = '.agent_builder';
+
+    const walk = (dir: string) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        // Skip our own prompt directory.
+        if (entry.name === excludeDir && entry.isDirectory()) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(fullPath);
+        } else {
+          const rel = path.relative(projectPath, fullPath).split(path.sep).join('/');
+          const stat = fs.statSync(fullPath);
+          files.push({ path: rel, size: stat.size });
+        }
+      }
+    };
+
+    walk(projectPath);
+    return files;
+  }
+
+  /** Resolve network policy from OPENCODE_NETWORK_POLICY env, defaulting to Controlled. */
+  private resolveNetworkPolicy(): NetworkPolicy {
+    const raw = process.env.OPENCODE_NETWORK_POLICY;
+    if (raw === 'none') return NetworkPolicy.None;
+    if (raw === 'openjiuwen_only') return NetworkPolicy.OpenjiuwenOnly;
+    if (raw === 'controlled') return NetworkPolicy.Controlled;
+    return NetworkPolicy.Controlled; // real mode requires a non-none policy
+  }
+
+  /** Collect configured opencode env vars to inject into the sandbox. */
+  private buildEnvAllowlist(): Record<string, string> {
+    const map: Record<string, string> = {};
+    const keys = ['OPENCODE_API_KEY', 'OPENCODE_BASE_URL', 'OPENCODE_MODEL', 'OPENCODE_PROVIDER'] as const;
+    for (const key of keys) {
+      const val = process.env[key];
+      if (val) map[key] = val;
+    }
+    return map;
   }
 
   /** The OpenCode prompt is derived from the Spec (never the raw user prompt). */

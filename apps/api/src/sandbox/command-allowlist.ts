@@ -66,6 +66,10 @@ export const ENV_ALLOWLIST: readonly string[] = [
   'PYTHONDONTWRITEBYTECODE',
   'PYTHONUNBUFFERED',
   'MOCK_OPENJIUWEN',
+  'OPENCODE_API_KEY',
+  'OPENCODE_BASE_URL',
+  'OPENCODE_MODEL',
+  'OPENCODE_PROVIDER',
 ] as const;
 
 export interface AllowlistResult {

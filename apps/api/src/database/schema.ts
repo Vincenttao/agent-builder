@@ -42,9 +42,25 @@ export const SCHEMA_SQL = [
     file_count INTEGER NOT NULL,
     test_status TEXT NOT NULL,
     mock_mode INTEGER NOT NULL,
+    retry_of_version_id TEXT,
+    retry_index INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_versions_gen ON project_versions(generation_id)`,
+
+  `CREATE TABLE IF NOT EXISTS generation_drafts (
+    id TEXT PRIMARY KEY,
+    user_prompt TEXT NOT NULL,
+    type TEXT NOT NULL,
+    spec_json TEXT,
+    parser_mode TEXT,
+    provider TEXT,
+    model TEXT,
+    validation_status TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+    created_at TEXT NOT NULL
+  )`,
 
   `CREATE TABLE IF NOT EXISTS generation_specs (
     id TEXT PRIMARY KEY,

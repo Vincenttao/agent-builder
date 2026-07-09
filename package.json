@@ -19,6 +19,7 @@
     "typecheck": "npm run build:contracts && npm run typecheck --workspaces --if-present",
     "build": "npm run build:contracts && npm --workspace @agent-builder/api run build && npm --workspace @agent-builder/web run build",
     "dev:api": "npm run build:contracts && npm --workspace @agent-builder/api run start:dev",
+    "dev:api:llm": "npm run build:contracts && npm --workspace @agent-builder/api run start:dev:llm",
     "dev:web": "npm --workspace @agent-builder/web run dev"
   },
   "engines": {

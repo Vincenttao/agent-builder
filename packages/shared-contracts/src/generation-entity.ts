@@ -28,6 +28,10 @@ export interface GenerationDto {
   project_path: string | null;
   error_code: string | null;
   error_message: string | null;
+  /** Phase 14: parser mode from the thought event (deterministic | llm | hybrid). */
+  parser_mode: string | null;
+  /** Phase 14: codegen engine from the command_finished event (template | opencode | mock). */
+  codegen_engine: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +47,8 @@ export function toGenerationDto(g: Generation): GenerationDto {
     project_path: g.project_root,
     error_code: g.error_code,
     error_message: g.error_message,
+    parser_mode: null,
+    codegen_engine: null,
     created_at: g.created_at,
     updated_at: g.updated_at,
   };

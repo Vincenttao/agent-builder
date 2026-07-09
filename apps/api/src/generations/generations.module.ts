@@ -10,6 +10,7 @@ import { VersionRepository } from './repositories/version.repository';
 import { RunRepository } from './repositories/run.repository';
 import { SandboxJobRepository } from './repositories/sandbox.repository';
 import { SpecRepository } from './repositories/spec.repository';
+import { DraftRepository } from './repositories/draft.repository';
 
 @Module({
   imports: [DatabaseModule, SpecModule],
@@ -23,6 +24,7 @@ import { SpecRepository } from './repositories/spec.repository';
     RunRepository,
     SandboxJobRepository,
     SpecRepository,
+    DraftRepository,
   ],
   exports: [
     GenerationService,
@@ -31,6 +33,7 @@ import { SpecRepository } from './repositories/spec.repository';
     RunRepository,
     SandboxJobRepository,
     SpecRepository,
+    DraftRepository,
   ],
 })
 export class GenerationsModule {}

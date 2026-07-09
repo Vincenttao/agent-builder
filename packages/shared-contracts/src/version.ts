@@ -15,5 +15,9 @@ export interface ProjectVersion {
   file_count: number;
   test_status: TestStatus;
   mock_mode: boolean;
+  /** Phase 14: set when this version was created by a repair attempt. */
+  retry_of_version_id: string | null;
+  /** Phase 14: 0-based retry index (0 = initial, 1 = first repair, …). */
+  retry_index: number;
   created_at: string; // ISO 8601
 }

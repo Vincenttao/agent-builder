@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "ts-node src/main.ts",
+    "start:dev:llm": "node --env-file=.env -r ts-node/register/transpile-only src/main.ts",
     "test": "jest",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

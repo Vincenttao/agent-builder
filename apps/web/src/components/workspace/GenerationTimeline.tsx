@@ -42,7 +42,6 @@ export function GenerationTimeline({ events }: { events: GenerationEvent[] }) {
   return (
     <ol className="flex flex-col gap-1" data-testid="timeline">
       {events.map((e) => {
-        const path = (e.payload?.path as string | undefined) ?? undefined;
         return (
           <li
             key={e.id}
@@ -55,7 +54,6 @@ export function GenerationTimeline({ events }: { events: GenerationEvent[] }) {
             </span>
             <span className={`flex-1 ${TONE[e.type] ?? 'text-slate-700'}`}>
               {e.message}
-              {path && <code className="ml-1 text-xs text-slate-500">{path}</code>}
             </span>
           </li>
         );

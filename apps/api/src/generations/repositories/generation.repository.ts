@@ -123,10 +123,18 @@ export class GenerationRepository {
       .run(GenerationStatus.Completed, new Date().toISOString(), id);
   }
 
-  list(limit = 50): Generation[] {
+  list(filter?: { status?: string; limit?: number; offset?: number }): Generation[] {
+    const limit = filter?.limit ?? 50;
+    const offset = filter?.offset ?? 0;
+    if (filter?.status) {
+      const rows = this.dbService.db
+        .prepare('SELECT * FROM generations WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
+        .all(filter.status, limit, offset) as GenerationRow[];
+      return rows.map(rowToGeneration);
+    }
     const rows = this.dbService.db
-      .prepare('SELECT * FROM generations ORDER BY created_at DESC LIMIT ?')
-      .all(limit) as GenerationRow[];
+      .prepare('SELECT * FROM generations ORDER BY created_at DESC LIMIT ? OFFSET ?')
+      .all(limit, offset) as GenerationRow[];
     return rows.map(rowToGeneration);
   }
 }

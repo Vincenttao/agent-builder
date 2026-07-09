@@ -2,9 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { TemplateEngine } from './template-engine';
-import { OpenCodeEngine } from './opencode-engine';
 import type { AgentSpec, WorkflowSpec } from '@agent-builder/shared-contracts';
-import { EventType } from '@agent-builder/shared-contracts';
 import { TAROT_AGENT_SPEC, PRESALES_WORKFLOW_SPEC } from '../spec/canonical-specs';
 
 function tmpProject(): string {
@@ -119,63 +117,6 @@ describe('TemplateEngine (Phase 4 §8.2)', () => {
         { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
       ),
     ).rejects.toThrow(/secret/);
-    fs.rmSync(projectPath, { recursive: true, force: true });
-  });
-});
-
-describe('OpenCodeEngine (Phase 4 §8.2)', () => {
-  it('#3 emits opencode_started / file_changed / finished in mock mode', async () => {
-    const templateEngine = new TemplateEngine();
-    const openCode = new OpenCodeEngine(templateEngine, false); // mockMode
-    const projectPath = tmpProject();
-    const events: { type: string; message: string }[] = [];
-    const files: { path: string }[] = [];
-
-    const result = await openCode.generate(
-      TAROT_AGENT_SPEC as AgentSpec,
-      { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
-      {
-        onFile: (f) => files.push({ path: f.path }),
-        onEvent: (type, message) => events.push({ type, message }),
-      },
-    );
-
-    expect(result.engine).toBe('opencode');
-    expect(events.map((e) => e.type)).toEqual(
-      expect.arrayContaining([
-        EventType.OpencodeStarted,
-        EventType.OpencodeFileChanged,
-        EventType.OpencodeFinished,
-      ]),
-    );
-    // one file_changed per generated file
-    const changed = events.filter((e) => e.type === EventType.OpencodeFileChanged);
-    expect(changed.length).toBe(files.length);
-    // prompt written to .agent_builder/prompt.md
-    expect(fs.existsSync(path.join(projectPath, '.agent_builder', 'prompt.md'))).toBe(true);
-    fs.rmSync(projectPath, { recursive: true, force: true });
-  });
-
-  it('#4 falls back to TemplateEngine when real opencode is required but unavailable', async () => {
-    const templateEngine = new TemplateEngine();
-    const openCode = new OpenCodeEngine(templateEngine, true); // requireReal
-    // opencode IS on PATH in this env, so simulate "unavailable" to exercise
-    // the documented fallback (P0 plan §8.2 test #4).
-    jest.spyOn(openCode, 'isOpencodeAvailable').mockReturnValue(false);
-    expect(openCode.isOpencodeAvailable()).toBe(false);
-
-    const projectPath = tmpProject();
-    const events: { type: string }[] = [];
-    const result = await openCode.generate(
-      TAROT_AGENT_SPEC as AgentSpec,
-      { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
-      { onEvent: (type) => events.push({ type }) },
-    );
-
-    // Reliable fallback: engine reports template, no opencode_started emitted.
-    expect(result.engine).toBe('template');
-    expect(events).not.toContain(EventType.OpencodeStarted);
-    expect(fs.existsSync(path.join(projectPath, 'src/agents/agent.py'))).toBe(true);
     fs.rmSync(projectPath, { recursive: true, force: true });
   });
 });

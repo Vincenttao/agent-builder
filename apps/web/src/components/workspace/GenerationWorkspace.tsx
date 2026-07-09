@@ -7,6 +7,7 @@ import { getGeneration, getFileTree, getFileContent, exportProject, exportDownlo
 import { useGenerationEvents } from '@/lib/use-generation-events';
 import { GenerationTimeline } from '@/components/workspace/GenerationTimeline';
 import { CompletionSummary } from '@/components/workspace/CompletionSummary';
+import { ErrorPanel } from '@/components/workspace/ErrorPanel';
 import { AgentTestPanel } from '@/components/agent/AgentTestPanel';
 import { WorkflowRunPanel } from '@/components/workflow/WorkflowRunPanel';
 import { FileTree } from '@/components/source/FileTree';
@@ -78,7 +79,13 @@ export function GenerationWorkspace({ id }: { id: string }) {
     }
   }
 
+  function handleRepair(_newVersionLabel: string) {
+    // Reload the page so the new version events stream in.
+    window.location.reload();
+  }
+
   const isCompleted = status === GenerationStatus.Completed;
+  const isFailed = status === GenerationStatus.Failed;
   const isWorkflow = gen?.type === 'workflow';
 
   return (
@@ -113,6 +120,7 @@ export function GenerationWorkspace({ id }: { id: string }) {
         <aside className="row-span-2 overflow-auto border-r border-slate-200 bg-white p-3" data-testid="left-rail">
           <GenerationTimeline events={events} />
           {isCompleted && <CompletionSummary events={events} version={null} />}
+          {isFailed && <ErrorPanel events={events} gen={gen} onRepair={handleRepair} />}
         </aside>
 
         {/* Right: tabs */}

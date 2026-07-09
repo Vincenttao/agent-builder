@@ -66,3 +66,73 @@ export function exportProject(id: string): Promise<CreateExportResponse> {
 export function exportDownloadUrl(exportId: string): string {
   return `/api/exports/${exportId}/download`;
 }
+
+// ─── Phase 14: Repair ──────────────────────────────────────────────
+
+export function repairGeneration(id: string, instruction?: string): Promise<{ generation_id: string; version_id: string; version_label: string; retry_index: number }> {
+  return jsonFetch(`/api/generations/${id}/repair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction }),
+  });
+}
+
+// ─── Phase 14: Versions ────────────────────────────────────────────
+
+export function getVersions(id: string): Promise<import('@agent-builder/shared-contracts').ProjectVersion[]> {
+  return jsonFetch(`/api/generations/${id}/versions`);
+}
+
+export function getVersionDiff(id: string, versionId: string, baseVersionId: string): Promise<import('@agent-builder/shared-contracts').VersionDiffResponse> {
+  return jsonFetch(`/api/generations/${id}/versions/${versionId}/diff?base=${encodeURIComponent(baseVersionId)}`);
+}
+
+export function activateVersion(id: string, versionId: string): Promise<{ version_id: string; version_label: string; active: boolean }> {
+  return jsonFetch(`/api/generations/${id}/versions/${versionId}/activate`, { method: 'POST' });
+}
+
+// ─── Phase 14: Run Logs ────────────────────────────────────────────
+
+export function getRuns(id: string): Promise<import('@agent-builder/shared-contracts').RunListResponse> {
+  return jsonFetch(`/api/generations/${id}/runs`);
+}
+
+export function getRunLog(id: string, runId: string, stream: 'stdout' | 'stderr' = 'stdout', tail = 200): Promise<import('@agent-builder/shared-contracts').RunLogResponse> {
+  return jsonFetch(`/api/generations/${id}/runs/${runId}/logs?stream=${stream}&tail=${tail}`);
+}
+
+// ─── Phase 14: Task History ────────────────────────────────────────
+
+export function listGenerations(status?: string, limit = 20, offset = 0): Promise<import('@agent-builder/shared-contracts').GenerationDto[]> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  return jsonFetch(`/api/generations?${params.toString()}`);
+}
+
+// ─── Phase 15: Draft / Confirm ─────────────────────────────────────
+
+export function createDraft(req: import('@agent-builder/shared-contracts').CreateDraftRequest): Promise<import('@agent-builder/shared-contracts').DraftResponse> {
+  return jsonFetch('/api/generations/drafts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+}
+
+export function getDraft(draftId: string): Promise<import('@agent-builder/shared-contracts').DraftResponse> {
+  return jsonFetch(`/api/generations/drafts/${draftId}`);
+}
+
+export function updateDraftSpec(draftId: string, spec: unknown): Promise<import('@agent-builder/shared-contracts').DraftResponse> {
+  return jsonFetch(`/api/generations/drafts/${draftId}/spec`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spec }),
+  });
+}
+
+export function confirmDraft(draftId: string): Promise<import('@agent-builder/shared-contracts').ConfirmDraftResponse> {
+  return jsonFetch(`/api/generations/drafts/${draftId}/confirm`, { method: 'POST' });
+}

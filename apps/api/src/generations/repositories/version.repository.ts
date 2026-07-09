@@ -13,6 +13,8 @@ interface VersionRow {
   file_count: number;
   test_status: string;
   mock_mode: number;
+  retry_of_version_id: string | null;
+  retry_index: number;
   created_at: string;
 }
 
@@ -26,6 +28,8 @@ function rowToVersion(row: VersionRow): ProjectVersion {
     file_count: row.file_count,
     test_status: row.test_status as TestStatus,
     mock_mode: row.mock_mode === 1,
+    retry_of_version_id: row.retry_of_version_id,
+    retry_index: row.retry_index,
     created_at: row.created_at,
   };
 }
@@ -38,6 +42,8 @@ export interface CreateVersionInput {
   file_count: number;
   test_status: TestStatus;
   mock_mode: boolean;
+  retry_of_version_id?: string | null;
+  retry_index?: number;
 }
 
 @Injectable()
@@ -53,12 +59,14 @@ export class VersionRepository {
     this.dbService.db
       .prepare(
         `INSERT INTO project_versions
-          (id, generation_id, version_label, summary, project_path, file_count, test_status, mock_mode, created_at)
-          VALUES (@id, @generation_id, @version_label, @summary, @project_path, @file_count, @test_status, @mock_mode, @created_at)`,
+          (id, generation_id, version_label, summary, project_path, file_count, test_status, mock_mode, retry_of_version_id, retry_index, created_at)
+          VALUES (@id, @generation_id, @version_label, @summary, @project_path, @file_count, @test_status, @mock_mode, @retry_of_version_id, @retry_index, @created_at)`,
       )
       .run({
         ...input,
         mock_mode: input.mock_mode ? 1 : 0,
+        retry_of_version_id: input.retry_of_version_id ?? null,
+        retry_index: input.retry_index ?? 0,
         created_at,
       });
     return this.getById(input.id)!;

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import type { AgentSpec, WorkflowSpec } from '@agent-builder/shared-contracts';
 import {
   GenerationStatus,
+  GenerationType,
   EventType,
   TestStatus,
   JobType,
@@ -10,9 +11,14 @@ import {
   AgentBuilderError,
   ErrorCode,
 } from '@agent-builder/shared-contracts';
+import type { CreateDraftRequest, DraftResponse, ConfirmDraftResponse } from '@agent-builder/shared-contracts';
 import { GenerationService } from '../generations/generation.service';
 import { VersionRepository } from '../generations/repositories/version.repository';
 import { EventService } from '../generations/event.service';
+import { SpecParserService } from '../spec/spec-parser.service';
+import { SpecValidatorService } from '../spec/spec-validator.service';
+import { DraftRepository } from '../generations/repositories/draft.repository';
+import { SpecRepository } from '../generations/repositories/spec.repository';
 import { CodeGenerationService } from '../codegen/codegen.service';
 import { lintGeneratedProject } from '../codegen/project-lint';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -40,6 +46,10 @@ export class OrchestratorService {
     private readonly eventService: EventService,
     private readonly codegen: CodeGenerationService,
     private readonly sandbox: SandboxService,
+    private readonly specParser: SpecParserService,
+    private readonly specValidator: SpecValidatorService,
+    private readonly draftRepo: DraftRepository,
+    private readonly specRepo: SpecRepository,
   ) {}
 
   async runPipeline(generationId: string): Promise<void> {
@@ -73,9 +83,12 @@ export class OrchestratorService {
     const projectPath = projectRoot(generationId, versionId);
     fs.mkdirSync(projectPath, { recursive: true });
 
+    const engineName = this.codegenEngineName();
+    const mock = engineName !== 'opencode' || process.env.OPENCODE_REQUIRE_REAL !== 'true';
+
     const result = await this.codegen.generate(
       spec,
-      { generationId, versionId, projectPath, mock: true },
+      { generationId, versionId, projectPath, mock },
       {
         onFile: (f) =>
           this.eventService.record({
@@ -85,7 +98,7 @@ export class OrchestratorService {
             payload: { path: f.path, size: f.size },
           }),
       },
-      this.codegenEngineName(),
+      engineName,
     );
 
     const version = this.versionRepo.create({
@@ -96,7 +109,7 @@ export class OrchestratorService {
       project_path: projectPath,
       file_count: result.files.length,
       test_status: TestStatus.Skipped,
-      mock_mode: true,
+      mock_mode: mock,
     });
 
     await this.eventService.record({
@@ -163,9 +176,188 @@ export class OrchestratorService {
       await this.eventService.record({
         generation_id: generationId,
         type: EventType.Output,
-        message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件，mock 模式）`,
-        payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: true },
+        message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件）`,
+        payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: result.mock },
       });
+    }
+  }
+
+  // ─── Phase 14: Repair ────────────────────────────────────────────
+
+  async repair(generationId: string, instruction?: string): Promise<{ generation_id: string; version_id: string; version_label: string; retry_index: number }> {
+    const gen = this.genService.getByIdOrThrow(generationId);
+    const existingCount = this.genService.countVersions(generationId);
+    const maxRetries = parseInt(process.env.OPENCODE_MAX_RETRIES ?? '2', 10);
+    if (existingCount > maxRetries) {
+      throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, `已达到最大重试次数 (${maxRetries})，请修改 Spec 后重试`);
+    }
+
+    // Reset status so runPipeline can transition
+    this.genService.transitionTo(generationId, GenerationStatus.Planning);
+
+    const versionId = this.versionRepo.newId();
+    const versionLabel = `v${existingCount + 1}`;
+    const lastVersion = this.versionRepo.listByGeneration(generationId)[0];
+
+    // Create version row immediately so the pipeline has it
+    this.versionRepo.create({
+      id: versionId,
+      generation_id: generationId,
+      version_label: versionLabel,
+      summary: `repair: ${instruction ?? '自动修复'} — ${gen.title}`,
+      project_path: projectRoot(generationId, versionId),
+      file_count: 0,
+      test_status: TestStatus.Skipped,
+      mock_mode: true,
+      retry_of_version_id: lastVersion?.id ?? null,
+      retry_index: existingCount,
+    });
+
+    // Run the pipeline asynchronously (same pattern as create)
+    void this.runPipeline(generationId).catch((e) => {
+      this.logger.error(`repair pipeline error for ${generationId}: ${(e as Error).message}`);
+    });
+
+    return { generation_id: generationId, version_id: versionId, version_label: versionLabel, retry_index: existingCount };
+  }
+
+  // ─── Phase 15: Draft / Confirm ───────────────────────────────────
+
+  async createDraft(req: CreateDraftRequest): Promise<DraftResponse> {
+    const id = this.draftRepo.newId();
+    const draft = this.draftRepo.create({
+      id,
+      user_prompt: req.prompt,
+      type: req.type,
+    });
+
+    // Parse async — fire and forget
+    void this.parseDraftSpec(id, req.prompt, req.type).catch((e) => {
+      this.logger.error(`draft spec parse error for ${id}: ${(e as Error).message}`);
+    });
+
+    return {
+      draft_id: draft.id,
+      status: draft.status as DraftResponse['status'],
+      type: draft.type,
+      user_prompt: draft.user_prompt,
+      spec: draft.spec,
+      parser_mode: draft.parser_mode,
+      provider: draft.provider,
+      model: draft.model,
+      validation_status: draft.validation_status,
+      error_message: draft.error_message,
+      created_at: draft.created_at,
+    };
+  }
+
+  async getDraft(draftId: string): Promise<DraftResponse> {
+    const draft = this.draftRepo.getById(draftId);
+    if (!draft) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `草稿 ${draftId} 不存在`);
+    }
+    return {
+      draft_id: draft.id,
+      status: draft.status as DraftResponse['status'],
+      type: draft.type,
+      user_prompt: draft.user_prompt,
+      spec: draft.spec,
+      parser_mode: draft.parser_mode,
+      provider: draft.provider,
+      model: draft.model,
+      validation_status: draft.validation_status,
+      error_message: draft.error_message,
+      created_at: draft.created_at,
+    };
+  }
+
+  async updateDraftSpec(draftId: string, spec: unknown): Promise<DraftResponse> {
+    const draft = this.draftRepo.getById(draftId);
+    if (!draft) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `草稿 ${draftId} 不存在`);
+    }
+    let validation_status: string;
+    try {
+      this.specValidator.validate(spec as AgentSpec | WorkflowSpec);
+      validation_status = 'valid';
+    } catch {
+      validation_status = 'invalid';
+    }
+    this.draftRepo.updateSpec(draftId, spec, validation_status);
+    const updated = this.draftRepo.getById(draftId)!;
+    return {
+      draft_id: updated.id,
+      status: updated.status as DraftResponse['status'],
+      type: updated.type,
+      user_prompt: updated.user_prompt,
+      spec: updated.spec,
+      parser_mode: updated.parser_mode,
+      provider: updated.provider,
+      model: updated.model,
+      validation_status: updated.validation_status,
+      error_message: updated.error_message,
+      created_at: updated.created_at,
+    };
+  }
+
+  async confirmDraft(draftId: string): Promise<ConfirmDraftResponse> {
+    const draft = this.draftRepo.getById(draftId);
+    if (!draft) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `草稿 ${draftId} 不存在`);
+    }
+    if (!draft.spec || draft.status === 'failed') {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, '草稿 Spec 尚未解析成功，无法确认');
+    }
+    // Validate spec once more before confirming
+    const spec = draft.spec as AgentSpec | WorkflowSpec;
+    this.specValidator.validate(spec);
+
+    // Create the generation
+    const gen = await this.genService.createGeneration({
+      type: draft.type as GenerationType,
+      prompt: draft.user_prompt,
+      mode: 'auto',
+      model: 'default',
+    });
+
+    // Persist the spec so parseAndPersistSpec won't re-parse
+    this.specRepo.save({
+      generation_id: gen.id,
+      spec,
+      parser_mode: draft.parser_mode ?? 'llm',
+      provider: draft.provider ?? 'unknown',
+      model: draft.model,
+      prompt_hash: '',
+      validation_status: draft.validation_status ?? 'valid',
+    });
+    this.draftRepo.markConfirmed(draftId);
+
+    // Run the pipeline
+    void this.runPipeline(gen.id).catch((e) => {
+      this.logger.error(`pipeline error for ${gen.id}: ${(e as Error).message}`);
+    });
+
+    return { generation_id: gen.id, status: gen.status };
+  }
+
+  private async parseDraftSpec(draftId: string, prompt: string, type: string): Promise<void> {
+    try {
+      const result = await this.specParser.parse(prompt, type as GenerationType);
+      let validation_status: string;
+      try {
+        this.specValidator.validate(result.spec);
+        validation_status = 'valid';
+      } catch {
+        validation_status = 'invalid';
+      }
+      this.draftRepo.setSpec(
+        draftId,
+        result.spec,
+        { parser_mode: result.parserMode, provider: result.provider, model: result.model },
+        validation_status,
+      );
+    } catch (e) {
+      this.draftRepo.markFailed(draftId, (e as Error).message);
     }
   }
 
