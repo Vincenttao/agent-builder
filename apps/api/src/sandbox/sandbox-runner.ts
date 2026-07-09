@@ -25,6 +25,13 @@ export interface SandboxRunRequest {
   runtime?: SandboxRuntime;
   /** Optional stdin payload (e.g. a chat message) — never passed as a CLI arg. */
   stdin?: string;
+  /**
+   * Phase 14: real-time stdout/stderr streaming callbacks.
+   * Called for each line as the subprocess produces it,
+   * so the orchestrator can forward progress to the SSE stream.
+   */
+  onStdout?: (line: string) => void;
+  onStderr?: (line: string) => void;
 }
 
 export interface SandboxRunResult {

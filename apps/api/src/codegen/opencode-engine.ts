@@ -137,16 +137,27 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const opencodeProvider = process.env.OPENCODE_PROVIDER ?? 'deepseek';
     const modelArg = `${opencodeProvider}/${opencodeModel}`;
 
+    // Stream opencode stdout/stderr as SSE thought events for real-time progress.
+    const onLine = (stream: string) => (line: string) => {
+      callbacks?.onEvent?.(
+        EventType.Thought,
+        `[opencode ${stream}] ${line.slice(0, 500)}`,
+        { stream, mock: false },
+      );
+    };
+
     const result = await this.sandbox.run({
       generationId: context.generationId,
       versionId: context.versionId,
       jobType: JobType.OpencodeGeneration,
-      command: ['opencode', 'run', '--dangerously-skip-permissions', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
+      command: ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
       workspacePath: context.projectPath,
       networkPolicy,
       timeoutSeconds,
       envAllowlist,
       runtime: SandboxRuntime.Docker,
+      onStdout: onLine('stdout'),
+      onStderr: onLine('stderr'),
     });
 
     // Check stderr for opencode errors even when exit code is 0 (opencode may

@@ -53,8 +53,30 @@ export class MockSandboxRunner implements SandboxRunner {
       // Collect in memory; write synchronously on close to avoid stream races.
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
-      child.stdout?.on('data', (c: Buffer) => stdoutChunks.push(c));
-      child.stderr?.on('data', (c: Buffer) => stderrChunks.push(c));
+      let stdoutLineBuf = '';
+      child.stdout?.on('data', (c: Buffer) => {
+        stdoutChunks.push(c);
+        if (req.onStdout) {
+          stdoutLineBuf += c.toString('utf8');
+          const lines = stdoutLineBuf.split('\n');
+          stdoutLineBuf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (line.trim()) req.onStdout(line);
+          }
+        }
+      });
+      let stderrLineBuf = '';
+      child.stderr?.on('data', (c: Buffer) => {
+        stderrChunks.push(c);
+        if (req.onStderr) {
+          stderrLineBuf += c.toString('utf8');
+          const lines = stderrLineBuf.split('\n');
+          stderrLineBuf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (line.trim()) req.onStderr(line);
+          }
+        }
+      });
 
       if (req.stdin && child.stdin) {
         child.stdin.end(req.stdin);
