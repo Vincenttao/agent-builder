@@ -144,7 +144,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       generationId: context.generationId,
       versionId: context.versionId,
       jobType: JobType.OpencodeGeneration,
-      command: ['opencode', 'run', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
+      command: ['opencode', 'run', '--dangerously-skip-permissions', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
       workspacePath: context.projectPath,
       networkPolicy,
       timeoutSeconds,
