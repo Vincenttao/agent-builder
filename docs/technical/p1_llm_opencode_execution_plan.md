@@ -78,6 +78,20 @@ P1 最值得优先加的 5 个体验能力：
 4. 通用模拟运行。
 5. 运行日志查看页。
 
+### 2.3 开工前必须前置解决的设计问题
+
+以下问题会直接卡住 P1 实施，不能留到后续阶段再补：
+
+| 编号 | 问题 | 决策 |
+| --- | --- | --- |
+| A | 真实 LLM parse 可能耗时 5-45 秒，不能阻塞 `POST /api/generations` | Phase 9 即引入异步 parse 或 draft/confirm；HTTP 请求必须快速返回，失败通过状态和 SSE 暴露 |
+| B | 真实 OpenCode 需要模型配置和联网，当前 sandbox 默认 `network=none` | Phase 10 必须定义 OpenCode provider/model/key 注入方式，并为 OpenCode job 使用受控网络策略 |
+| C | OpenCode 输出非确定，可能缺少 P0 固定 smoke test 文件 | Phase 10/11 必须定义生成物 contract、生成后 lint、有限 repair retry 和超限策略 |
+| D | P0 mock runtime 是塔罗/售前专用 | Phase 12 必须重写通用 mock runtime，并用非塔罗 Agent / 非售前 Workflow 测试约束 |
+| H | export filter 未覆盖 `.opencode/`、`.agent_builder/`、`opencode.json` | 第一切片必须补齐导出过滤，防止 project 级配置泄漏 |
+
+第一切片不得只做 mock LLM parser。它必须同时包含 A 和 H；如果包含非示例页面模拟 E2E，则必须同时包含 D。
+
 ## 3. 关键原则
 
 ### 3.1 TDD 强制要求
@@ -118,7 +132,7 @@ P1 最值得优先加的 5 个体验能力：
 
 ```text
 SPEC_PARSER_MODE=deterministic|llm|hybrid
-SPEC_LLM_PROVIDER=openai|openjiuwen|mock
+SPEC_LLM_PROVIDER=mock|openai-compatible
 SPEC_LLM_MODEL=gpt-4.1-mini
 SPEC_LLM_BASE_URL=
 SPEC_LLM_API_KEY=
@@ -128,8 +142,16 @@ SPEC_LLM_MAX_RETRIES=2
 CODEGEN_ENGINE=template|opencode|mock
 OPENCODE_REQUIRE_REAL=false|true
 OPENCODE_BIN=opencode
+OPENCODE_PROVIDER=mock|openai-compatible
+OPENCODE_MODEL=
+OPENCODE_BASE_URL=
+OPENCODE_API_KEY=
+OPENCODE_CONFIG_MODE=env|project_config|mounted_user_config
+OPENCODE_NETWORK_POLICY=controlled|openjiuwen_only|none
 OPENCODE_TIMEOUT_SECONDS=180
+OPENCODE_MAX_RETRIES=2
 OPENCODE_WORKDIR_MODE=project
+OPENCODE_ALLOW_FALLBACK=true
 
 FEATURE_SPEC_CONFIRMATION=true
 FEATURE_REPAIR_RETRY=true
@@ -154,11 +176,17 @@ OPENCODE_REQUIRE_REAL=false
 3. OpenCode 可用时走真实 OpenCode，不可用时走明确 fallback。
 4. P1 Beta 体验能力以 feature flag 方式接入，便于逐项验收和回滚。
 
+命名说明：
+
+1. `SPEC_LLM_PROVIDER=openai-compatible` 表示走 OpenAI 兼容 Chat Completions 接口；OpenJiuwen 如提供兼容接口，应通过 `SPEC_LLM_BASE_URL` 配置，不要把 Agent 框架名和 LLM provider 概念混在一起。
+2. `OPENCODE_CONFIG_MODE=project_config` 只能写入不含 secret 的 project 级配置；任何带 key 的配置文件不得进入 workspace 导出包。
+3. `OPENCODE_NETWORK_POLICY=none` 只允许 mock / 离线测试；真实 OpenCode 必须使用 `controlled` 或 `openjiuwen_only`。
+
 ## 5. 阶段计划
 
-### Phase 9：LLM Spec Parser 接入
+### Phase 9：异步 LLM Spec Parser + Spec 持久化
 
-目标：非示例 prompt 可以被解析为合法 AgentSpec / WorkflowSpec。
+目标：非示例 prompt 可以被解析为合法 AgentSpec / WorkflowSpec，且真实 LLM 调用不得阻塞 `POST /api/generations`。
 
 先写测试：
 
@@ -167,6 +195,10 @@ OPENCODE_REQUIRE_REAL=false
 3. mock LLM 返回 WorkflowSpec JSON 时，parser 返回合法 WorkflowSpec。
 4. LLM 返回非 JSON、缺字段、类型错误时，返回 `PROMPT_PARSE_FAILED` 或 `SPEC_VALIDATION_FAILED`。
 5. deterministic 两个标准 prompt 行为不变。
+6. `POST /api/generations` 在 mock slow parser 延迟 5 秒时仍能快速返回 `generation_id`。
+7. parse 失败时，generation 进入 `failed`，SSE 出现 `error` 事件，HTTP 创建请求不等待 LLM 完成。
+8. LLM 输出包在 markdown fence 中时，JSON 提取仍能稳定工作。
+9. 持久化后的 Spec 被读取时不会再次调用 LLM。
 
 实现任务：
 
@@ -178,20 +210,48 @@ interface LlmSpecParser {
 }
 ```
 
-2. 将 `SpecParserService.parse` 改为 async，或新增 `parseAsync` 并逐步替换调用方。
+2. 一次性将 parser 主接口改为 async，不保留同步 `parse` / 异步 `parseAsync` 双入口，避免调用方不一致。
 3. 新增 provider：
    - `DeterministicSpecParser`
-   - `OpenAiSpecParser` 或通用 `HttpJsonSpecParser`
+   - `OpenAiCompatibleSpecParser` 或通用 `HttpJsonSpecParser`
    - `MockLlmSpecParser`
 4. 设计 LLM prompt，要求模型只输出 JSON，不输出 Markdown。
 5. 对 LLM 输出做 JSON 提取、schema validation、错误归一化。
 6. 更新 `GenerationService.createGeneration` 与 `getSpec`，避免重复调用 LLM 产生不一致结果。
+7. 将 LLM parse 从同步 HTTP 创建路径移入异步 pipeline：
+
+```text
+POST /api/generations
+  -> insert generation(pending)
+  -> emit plan_created
+  -> return generation_id immediately
+  -> async pipeline: planning -> parse -> persist spec -> generating
+```
+
+8. 同时预留 draft/confirm 数据结构，Phase 15 只做 UI 和交互增强，不再补底层 parse 架构：
+
+```text
+generation_specs
+  id
+  generation_id
+  draft_id nullable
+  spec_json
+  parser_mode
+  provider
+  model
+  prompt_hash
+  validation_status
+  created_at
+```
 
 注意事项：
 
 1. 当前 `getSpec(id)` 会重新 parse `user_prompt`，真实 LLM 接入后这是风险点。必须把解析后的 Spec 持久化或缓存到 generation / version / event payload 中。
 2. 建议新增 `generation_specs` 表，字段包含 `generation_id`、`spec_json`、`parser_mode`、`model`、`created_at`。
 3. 不要只把 Spec 存在 event payload；event 适合审计，不适合作为主数据读取来源。
+4. 只有 schema validation 通过的 Spec 才能进入 codegen。
+5. 非示例 prompt 的失败文案不得继续显示“P0 deterministic parser 暂仅支持...”。
+6. 纯对话 Agent 是否允许 0 tools 必须在本阶段定稿：若允许，应把 AgentSpec `tools` 改为可空数组；若不允许，LLM prompt 必须强制生成至少一个工具，并解释原因。
 
 阶段检查点：
 
@@ -199,6 +259,7 @@ interface LlmSpecParser {
 2. 非示例 Agent prompt 可进入 generation pipeline。
 3. 非示例 Workflow prompt 可进入 generation pipeline。
 4. LLM 失败时页面显示明确错误，不再出现 P0 示例限制文案。
+5. HTTP 创建请求不因真实 LLM 调用阻塞。
 
 ### Phase 10：真实 OpenCodeEngine
 
@@ -212,6 +273,10 @@ interface LlmSpecParser {
 4. OpenCode stdout/stderr 中的 secret 会被脱敏。
 5. OpenCode 超时会终止任务并返回失败事件。
 6. OpenCode 不可用时按配置 fallback 或失败。
+7. OpenCode real job 使用 `NetworkPolicy.Controlled` 或 `NetworkPolicy.OpenjiuwenOnly`，不得使用默认 `none`。
+8. OpenCode provider/model/key 通过 allowlisted env 或只读 mounted config 注入；带 key 的配置不得写入可导出目录。
+9. stub `opencode` 在 mock sandbox 中可覆盖 real command、事件映射和文件扫描路径。
+10. 生成物 lint 能拒绝 `import langgraph`、`import crewai`、`import dify` 等非 OpenJiuwen 框架。
 
 实现任务：
 
@@ -232,6 +297,16 @@ opencode run --format json .agent_builder/prompt.md
 4. 生成完成后扫描 project tree，构造 `GenerationResult.files`。
 5. 如果 OpenCode 输出结构化 JSON，解析并映射；如果没有结构化 JSON，以文件系统扫描为准。
 6. 保留 TemplateEngine fallback，配置项控制 fallback 策略。
+7. 明确 OpenCode 配置注入方式，按优先级选择：
+   - `env`：通过 sandbox env allowlist 注入 `OPENCODE_*` / provider key，日志必须脱敏。
+   - `mounted_user_config`：只读挂载用户级 OpenCode config，不复制进 workspace。
+   - `project_config`：只写不含 secret 的 project config；key 仍通过 env 注入。
+8. OpenCode job 的 `networkPolicy` 必须来自 `OPENCODE_NETWORK_POLICY`，真实模式禁止 `none`。
+9. 新增 `OPENCODE_MAX_RETRIES`，用于 OpenCode 失败或 smoke test 失败后的有限修复循环。
+10. 新增生成物 contract：
+    - Agent 必须包含 `config/agent_spec.json`、`src/agents/agent.py`、`tests/test_agent_smoke.py`。
+    - Workflow 必须包含 `config/workflow_spec.json`、`src/workflows/workflow.py`、`tests/test_workflow_smoke.py`。
+    - README、`.env.example`、pyproject 必须存在。
 
 注意事项：
 
@@ -239,6 +314,8 @@ opencode run --format json .agent_builder/prompt.md
 2. 不要让 OpenCode 读取仓库根目录；只挂载当前 project workspace。
 3. 不要把用户原始 prompt 直接交给 OpenCode；应交给 OpenCode 已验证 Spec + 生成约束。
 4. OpenCode 生成后仍必须跑 smoke test。
+5. 不要为提高通过率默认 skip smoke test。缺少 test 文件时应先进入 repair retry；超过 `OPENCODE_MAX_RETRIES` 后标记 failed。仅开发诊断模式可配置 `skip+warn`。
+6. 生成后 lint 是 smoke test 前置门禁；发现非白名单框架、secret、越界路径时直接 failed。
 
 阶段检查点：
 
@@ -246,6 +323,7 @@ opencode run --format json .agent_builder/prompt.md
 2. OpenCode 生成文件后，源码页能看到文件树。
 3. smoke test 通过后才能标记 completed。
 4. OpenCode 失败时 generation 标记 failed，并保留错误日志路径。
+5. 真实 OpenCode job 在 sandbox 中具备受控网络和明确模型配置。
 
 ### Phase 11：LLM + OpenCode 端到端编排
 
@@ -261,7 +339,7 @@ opencode run --format json .agent_builder/prompt.md
 
 实现任务：
 
-1. `POST /api/generations` 在 planning 阶段调用 parser 并持久化 Spec。
+1. `POST /api/generations` 只创建 generation 并立即返回；异步 pipeline 在 planning 阶段调用 parser 并持久化 Spec。
 2. `OrchestratorService.runPipeline` 读取持久化 Spec。
 3. `CodeGenerationService` 根据 `CODEGEN_ENGINE` 选择 `opencode`。
 4. `GenerationEvent` payload 中记录 parser mode、model、engine、fallback 状态。
@@ -277,6 +355,7 @@ opencode run --format json .agent_builder/prompt.md
 1. 非示例 prompt 不再触发 deterministic parser 限制。
 2. 后端 integration test 覆盖 Agent / Workflow 两条非示例链路。
 3. 失败路径均有用户可理解错误码和 message。
+4. slow LLM / slow OpenCode 不会让创建接口超时。
 
 ### Phase 12：页面模拟能力增强
 
@@ -289,6 +368,8 @@ opencode run --format json .agent_builder/prompt.md
 3. 页面展示 parser mode、codegen engine、fallback 状态。
 4. failed 状态下页面显示错误摘要和可查看日志入口。
 5. Source tab 在生成完成后稳定显示 OpenCode 写入的文件。
+6. 非塔罗 Agent 的 mock 回复不得出现“塔罗”“占卜”“牌”“抽牌”等领域词。
+7. 非售前 Workflow 的 mock 节点结果不得写死“需求抽取 / 方案匹配 / Demo 清单 / 报告输出”。
 
 实现任务：
 
@@ -308,12 +389,18 @@ opencode run --format json .agent_builder/prompt.md
 5. E2E 新增非示例 prompt：
    - Agent：天气查询 / 简历优化 / 会议纪要助手。
    - Workflow：合同审核 / 客诉分级 / 内容审核流程。
+6. 重写 Python Runner 和生成模板中的 mock runtime：
+   - Agent mock 根据 `spec.name`、`description`、`system_prompt` 和 `tools` 生成通用回复。
+   - 有 tools 时按 tools 顺序调用或模拟调用，并把工具输出拼入回复。
+   - 无 tools 时返回基于 system prompt 的纯对话回复。
+   - Workflow mock 按 `spec.nodes` / `edges` 通用执行，并用节点 name/type 生成 node result。
 
 阶段检查点：
 
 1. Playwright 覆盖一个非示例 Agent。
 2. Playwright 覆盖一个非示例 Workflow。
 3. 页面可以完成：输入 prompt -> 生成 -> 源码 -> 模拟运行 -> 导出。
+4. 通用 mock runtime 不再泄漏塔罗 / 售前 Demo 专用文案。
 
 ### Phase 13：真实模型与本地开发体验
 
@@ -325,6 +412,8 @@ opencode run --format json .agent_builder/prompt.md
 2. mock parser 模式下不需要真实 key。
 3. `.env.example` 包含所有必要配置。
 4. README 含本地启动和 E2E 复现步骤。
+5. export filter 排除 `.agent_builder/`、`.opencode/`、`opencode.json`、任何 `*opencode*.json` 配置文件和 run logs。
+6. export zip 不包含 OpenCode prompt、OpenCode config、LLM provider config 或任何 secret-looking value。
 
 实现任务：
 
@@ -332,7 +421,18 @@ opencode run --format json .agent_builder/prompt.md
 2. 更新 README。
 3. 更新 `docs/technical/p0_acceptance_report.md`，追加“下一阶段能力状态”。
 4. 增加 `npm run dev:llm-mock` 或文档化环境变量组合。
-5. 增加一键验证命令：
+5. 补齐 export filter：
+
+```text
+.agent_builder/
+.opencode/
+opencode.json
+*opencode*.json
+*.log
+workspace run logs
+```
+
+6. 增加一键验证命令：
 
 ```bash
 npm run lint
@@ -346,6 +446,7 @@ npm run test:e2e
 1. 无密钥环境下全量测试通过。
 2. 有真实 LLM key 时，非示例 prompt 能生成 Spec。
 3. 有 OpenCode 时，真实 OpenCode 路径可被手动或集成测试验证。
+4. 导出包不包含 OpenCode / LLM / sandbox 运行配置和日志。
 
 ### Phase 14：可恢复生成、版本管理与日志可观测
 
@@ -360,6 +461,7 @@ npm run test:e2e
 5. Diff API 能比较两个版本的文件新增、删除、修改。
 6. 回滚 API 只切换 active version，不修改历史版本。
 7. 日志查看 API 会脱敏 secret，并拒绝路径穿越。
+8. repair retry 超过 `OPENCODE_MAX_RETRIES` 后停止循环并标记 failed。
 
 实现任务：
 
@@ -398,7 +500,13 @@ GET /api/generations/:id/runs/:runId/logs?stream=stdout|stderr
    - 脱敏后的 stdout / stderr 摘要。
    - 当前版本文件清单。
    - 不允许越出 project workspace 的约束。
-5. 前端新增：
+5. repair 任务必须记录 retry count：
+   - `retry_of_version_id`
+   - `retry_index`
+   - `max_retries`
+   - `last_failure_code`
+6. 超过 `OPENCODE_MAX_RETRIES` 后，系统不得继续自动修复；页面提示用户修改 Spec 或切换 fallback。
+7. 前端新增：
    - 失败错误面板。
    - “修复并重试”按钮。
    - 版本列表。
@@ -411,6 +519,7 @@ GET /api/generations/:id/runs/:runId/logs?stream=stdout|stderr
 2. Diff 不要求 P1 做完整 IDE 级体验；文本文件显示 unified diff 即可。
 3. 日志页默认只显示脱敏后的最后 N 行，避免大日志拖垮页面。
 4. `active_version_id` 只能指向 smoke test 通过的版本；失败版本可查看但不能自动激活。
+5. 自动修复必须有停止条件；不要让 coding agent 在后台无限循环。
 
 阶段检查点：
 
@@ -439,9 +548,10 @@ GET /api/generations/:id/runs/:runId/logs?stream=stdout|stderr
 
 ```text
 POST /api/generations/drafts
-  -> parse prompt
-  -> persist draft spec
-  -> return draft_id
+  -> create draft
+  -> return draft_id immediately
+  -> async parse prompt
+  -> persist draft spec or failed status
 
 POST /api/generations/drafts/:draftId/confirm
   -> validate spec
@@ -483,6 +593,7 @@ POST /api/generations/drafts/:draftId/confirm
 2. 模型配置中心不要在数据库里明文保存 key；P1 可以只读取环境变量。
 3. Prompt 模板是提高成功率的产品能力，不应绕过 LLM parser 和 validator。
 4. 任务历史页只做单用户本地视图，不引入多用户权限模型。
+5. Draft parse 也不得阻塞 HTTP；draft 状态通过轮询或 SSE 展示。
 
 阶段检查点：
 
@@ -498,10 +609,14 @@ POST /api/generations/drafts/:draftId/confirm
 | 优先级 | 工作 | 原因 |
 | --- | --- | --- |
 | P0 | Spec 持久化 | 真实 LLM 不能重复 parse，否则同一 generation 可能前后不一致 |
+| P0 | 异步 parse / draft 底座 | 真实 LLM 不得阻塞 HTTP 创建请求 |
 | P0 | LLM parser mock 测试 | 先把接口和失败路径定住 |
 | P0 | hybrid parser | 立即解决 `PROMPT_PARSE_FAILED` 的产品阻塞 |
+| P0 | export filter 安全补齐 | 防止 OpenCode / LLM 配置进入导出包 |
 | P0 | OpenCode real command builder | 先证明真实调用边界安全 |
+| P0 | OpenCode 配置与网络策略 | 真实 OpenCode 需要 provider/model/key 和受控联网 |
 | P0 | OpenCode sandbox execution | 避免主进程直接运行 coding agent |
+| P1 | 通用 mock runtime | 避免非示例 Agent / Workflow 仍输出塔罗/售前文案 |
 | P1 | 非示例 Agent E2E | 验证页面可用 |
 | P1 | 非示例 Workflow E2E | 验证复杂链路 |
 | P1 | Spec 预览与确认 | 控制 LLM 解析误差，避免错误 Spec 直接生成 |
@@ -517,15 +632,18 @@ POST /api/generations/drafts/:draftId/confirm
 为了快速向下推进，建议第一个 PR 只做以下内容：
 
 1. 新增 Spec 持久化。
-2. 新增 mock LLM parser。
-3. `SPEC_PARSER_MODE=hybrid`。
-4. 非示例 prompt 通过 mock LLM 生成合法 Spec。
-5. TemplateEngine 仍作为 codegen fallback。
-6. API integration + 前端 E2E 覆盖一个非示例 Agent。
+2. 将 parse 移入异步 pipeline，`POST /api/generations` 立即返回。
+3. 新增 mock LLM parser。
+4. `SPEC_PARSER_MODE=hybrid`。
+5. 非示例 prompt 通过 mock LLM 生成合法 Spec。
+6. TemplateEngine 仍作为 codegen fallback。
+7. 补齐 export filter，排除 `.agent_builder/`、`.opencode/`、`opencode.json`。
+8. 如果该 PR 覆盖页面模拟 E2E，则同时重写通用 mock runtime。
+9. API integration + 前端 E2E 覆盖一个非示例 Agent。
 
 这个切片完成后，用户已经不会再遇到“P0 deterministic parser 暂仅支持...”的固定阻断。
 
-第二个 PR 再接入真实 provider 和真实 OpenCode。
+第二个 PR 再接入真实 provider、OpenCode 配置/网络策略和真实 OpenCode。
 
 第三个 PR 增加 Spec 预览确认、失败修复、版本 Diff 和日志查看。
 
@@ -544,7 +662,7 @@ POST /api/generations/drafts/:draftId/confirm
 7. 非示例 Agent prompt 可以生成、查看源码、模拟运行、导出。
 8. 非示例 Workflow prompt 可以生成、查看源码、模拟运行、导出。
 9. LLM 失败、OpenCode 失败、smoke test 失败都有明确错误展示。
-10. 导出 zip 不包含 `.env`、run logs、cache、secret。
+10. 导出 zip 不包含 `.env`、run logs、cache、`.agent_builder/`、`.opencode/`、`opencode.json`、secret。
 11. 事件流能区分 parser mode、codegen engine、fallback 状态。
 12. OpenCode 不在主服务进程直接执行。
 13. 用户可以在生成前预览并确认 LLM 解析出的 Spec。
@@ -555,6 +673,10 @@ POST /api/generations/drafts/:draftId/confirm
 18. 模型配置页面不会泄漏 API key 明文。
 19. Prompt 模板可以启动非示例 Agent / Workflow。
 20. 任务历史页可以查看最近 generation、状态、版本和导出入口。
+21. `POST /api/generations` 和 draft 创建都不会被真实 LLM parse 阻塞。
+22. 真实 OpenCode job 必须有受控网络策略和明确配置注入方式。
+23. OpenCode / smoke repair retry 超限后停止，不允许无限循环。
+24. 非塔罗 Agent 和非售前 Workflow 的 mock 运行结果不得泄漏 Demo 专用文案。
 
 ## 9. 编程 Agent 注意事项
 
@@ -566,26 +688,35 @@ POST /api/generations/drafts/:draftId/confirm
 6. 不要因为 OpenCode 输出不稳定而放宽 smoke test；生成失败应显式失败。
 7. 不要把页面模拟写死为塔罗 / 售前；通用 Agent / Workflow 要能显示。
 8. 不要把 `PROMPT_PARSE_FAILED` 全部吞掉；要保留错误码，但 message 应指向真实失败原因。
+9. 不要把真实 LLM parse 放回同步 HTTP 创建路径。
+10. 不要把带 key 的 OpenCode config 写入 workspace；如必须写 project config，只允许无 secret 配置。
+11. 不要允许 `.agent_builder/`、`.opencode/`、`opencode.json` 进入导出包。
+12. 不要保留同步 `parse` 和异步 `parseAsync` 两套主接口。
 
 ## 10. 建议任务拆分
 
 ```text
 Task A: Spec persistence
-Task B: LLM parser interface + mock provider
-Task C: hybrid parser wiring
-Task D: non-demo API integration tests
-Task E: OpenCode real command builder tests
-Task F: OpenCode via SandboxService
-Task G: generic Agent/Workflow simulation
-Task H: non-demo Playwright E2E
-Task I: docs/env/README update
-Task J: Spec preview and confirmation flow
-Task K: repair / retry generation flow
-Task L: version list, activate, and diff APIs
-Task M: run log viewer with redaction
-Task N: prompt templates and task history page
-Task O: model configuration page
-Task P: optional GitHub export feature flag
+Task B: Async parse pipeline / draft foundation
+Task C: LLM parser interface + mock provider
+Task D: hybrid parser wiring
+Task E: export filter hardening for OpenCode/LLM artifacts
+Task F: non-demo API integration tests
+Task G: OpenCode real command builder tests
+Task H: OpenCode provider/model/key injection and network policy
+Task I: OpenCode via SandboxService
+Task J: generated project contract and post-generation lint
+Task K: generic Agent/Workflow mock runtime
+Task L: generic Agent/Workflow simulation UI
+Task M: non-demo Playwright E2E
+Task N: docs/env/README update
+Task O: Spec preview and confirmation flow
+Task P: repair / retry generation flow
+Task Q: version list, activate, and diff APIs
+Task R: run log viewer with redaction
+Task S: prompt templates and task history page
+Task T: model configuration page
+Task U: optional GitHub export feature flag
 ```
 
 每个 Task 都必须有测试证明，不能只靠手工页面验证。
