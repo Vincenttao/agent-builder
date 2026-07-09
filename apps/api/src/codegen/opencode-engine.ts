@@ -150,7 +150,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       generationId: context.generationId,
       versionId: context.versionId,
       jobType: JobType.OpencodeGeneration,
-      command: ['opencode', 'run', '--pure', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
+      command: ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
       workspacePath: context.projectPath,
       networkPolicy,
       timeoutSeconds,
@@ -248,10 +248,22 @@ export class OpenCodeEngine implements CodeGenerationEngine {
   /** Scan opencode stderr for error patterns and return a user-facing message. */
   private extractOpencodeErrors(stderr: string): string | null {
     if (!stderr.trim()) return null;
+    // Filter to lines that look like real errors, but exclude known non-fatal
+    // noise: MCP plugin timeouts, internal service errors from plugins, etc.
+    const nonFatal = /MCP error|service=mcp|plugin.*error|type=message\.updated/i;
     const lines = stderr.split('\n').filter((l) =>
-      /error|Error|not found|Model not/i.test(l) && !/^\s*$/.test(l),
+      /error|Error|not found|Model not/i.test(l) &&
+      !/^\s*$/.test(l) &&
+      !nonFatal.test(l),
     );
-    if (lines.length === 0) return null;
+    if (lines.length === 0) {
+      // Log non-fatal lines for debugging but don't treat as errors.
+      const mcpLines = stderr.split('\n').filter((l) => nonFatal.test(l));
+      if (mcpLines.length > 0) {
+        this.logger.debug(`opencode non-fatal stderr: ${mcpLines.join(' | ').slice(0, 300)}`);
+      }
+      return null;
+    }
     this.logger.warn(`opencode stderr: ${lines.join(' | ')}`);
     // Return the first meaningful error line
     const first = lines.find((l) => l.length > 10);
