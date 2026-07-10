@@ -16,19 +16,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# opencode standalone binary from GitHub Releases (v0.0.55).
-# This is the headless codegen engine. oh-my-opencode is a separate interactive
-# plugin that wraps opencode — not needed for sandbox execution.
-RUN curl -fsSL -o /tmp/opencode.tar.gz \
-      "https://github.com/opencode-ai/opencode/releases/download/v0.0.55/opencode-linux-x86_64.tar.gz" && \
-    tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin/ opencode && \
-    rm /tmp/opencode.tar.gz
-
-# Pre-configured DeepSeek provider (no API key — injected via DEEPSEEK_API_KEY).
-# opencode reads config from $HOME/.config/opencode/opencode.json.
-ENV HOME=/root
-RUN mkdir -p /root/.config/opencode
-COPY opencode-config.json /root/.config/opencode/opencode.json
+# opencode — install via official installer (https://opencode.ai).
+RUN curl -fsSL https://opencode.ai/install | bash
+ENV PATH="/root/.opencode/bin:${PATH}"
 
 WORKDIR /workspace
 

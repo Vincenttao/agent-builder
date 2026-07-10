@@ -57,3 +57,4 @@ workspace/*.db-wal
 
 # misc logs
 *.log
+sandbox/opencode-bin
