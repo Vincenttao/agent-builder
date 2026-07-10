@@ -51,14 +51,10 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('--memory', limits.memory);
   args.push('--pids-limit', String(limits.pids_limit));
 
-  // Hardening (architecture §12): drop all caps, no new privileges, read-only fs.
+  // Hardening: drop all caps, no new privileges.
+  // (No --read-only: opencode needs to write to /workspace and /root.)
   args.push('--cap-drop', 'ALL');
   args.push('--security-opt', 'no-new-privileges');
-  args.push('--read-only');
-  args.push('--tmpfs', '/tmp:rw,nosuid,nodev,size=256m');
-  // opencode (Bun) writes to $HOME (/root). Binary is at /usr/local/bin/opencode
-  // (copied there in Dockerfile) so it survives the tmpfs mount.
-  args.push('--tmpfs', '/root:rw,nosuid,nodev,size=256m');
 
   // #4 mount ONLY the current generation/version workspace; never the host
   // docker socket, never the host root (architecture §12 constraint #10).

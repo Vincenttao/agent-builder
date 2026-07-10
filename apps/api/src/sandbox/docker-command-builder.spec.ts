@@ -61,7 +61,7 @@ describe('buildDockerArgs (Phase 3 §7.2 — Docker baseline)', () => {
     expect(args.some((a) => a.includes('/:/'))).toBe(false);
   });
 
-  it('applies hardening flags (cap-drop ALL, no-new-privileges, read-only, tmpfs)', () => {
+  it('applies hardening flags (cap-drop ALL, no-new-privileges)', () => {
     const args = buildDockerArgs({
       runtime: SandboxRuntime.Docker,
       image: IMAGE,
@@ -74,9 +74,6 @@ describe('buildDockerArgs (Phase 3 §7.2 — Docker baseline)', () => {
         'ALL',
         '--security-opt',
         'no-new-privileges',
-        '--read-only',
-        '--tmpfs',
-        '/tmp:rw,nosuid,nodev,size=256m',
       ]),
     );
     expect(args).not.toContain('--privileged');

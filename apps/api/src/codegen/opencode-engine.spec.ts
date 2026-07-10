@@ -152,7 +152,7 @@ describe('OpenCodeEngine', () => {
       const runReq = runMock.mock.calls[0][0];
       expect(runReq.jobType).toBe(JobType.OpencodeGeneration);
       expect(runReq.command).toEqual([
-        'opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', 'deepseek/deepseek-chat', '请读取 .agent_builder/prompt.md 并根据其中的 Spec 生成完整的项目代码',
+        'opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', 'deepseek/deepseek-chat', '在当前目录 /workspace 下，读取 .agent_builder/prompt.md 中的 Spec，生成完整的项目代码。所有文件直接创建在当前目录，不要创建子项目目录。',
       ]);
 
       delete process.env.OPENCODE_CLI_STYLE;

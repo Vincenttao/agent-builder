@@ -348,7 +348,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const style = process.env.OPENCODE_CLI_STYLE ?? 'v0';
     switch (style) {
       case 'v1':
-        return ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '请读取 .agent_builder/prompt.md 并根据其中的 Spec 生成完整的项目代码'];
+        return ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '在当前目录 /workspace 下，读取 .agent_builder/prompt.md 中的 Spec，生成完整的项目代码。所有文件直接创建在当前目录，不要创建子项目目录。'];
       case 'v3':
         return ['opencode', 'run', '--model', modelArg, '--json', 'Read .agent_builder/prompt.md and generate the project'];
       case 'v0':
