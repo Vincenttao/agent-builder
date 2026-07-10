@@ -61,21 +61,15 @@ describe('buildDockerArgs (Phase 3 §7.2 — Docker baseline)', () => {
     expect(args.some((a) => a.includes('/:/'))).toBe(false);
   });
 
-  it('applies hardening flags (cap-drop ALL, no-new-privileges)', () => {
+  it('applies hardening (no-new-privileges, no --privileged)', () => {
     const args = buildDockerArgs({
       runtime: SandboxRuntime.Docker,
       image: IMAGE,
       workspacePath: WORKSPACE,
       command: CMD,
     });
-    expect(args).toEqual(
-      expect.arrayContaining([
-        '--cap-drop',
-        'ALL',
-        '--security-opt',
-        'no-new-privileges',
-      ]),
-    );
+    expect(args).toContain('--security-opt');
+    expect(args).toContain('no-new-privileges');
     expect(args).not.toContain('--privileged');
   });
 

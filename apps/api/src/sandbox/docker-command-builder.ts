@@ -51,9 +51,8 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('--memory', limits.memory);
   args.push('--pids-limit', String(limits.pids_limit));
 
-  // Hardening: drop all caps, no new privileges.
-  // (No --read-only: opencode needs to write to /workspace and /root.)
-  args.push('--cap-drop', 'ALL');
+  // Hardening: no new privileges. Don't drop CAP_DAC_OVERRIDE —
+  // opencode (root in container) needs to write to host-mounted /workspace.
   args.push('--security-opt', 'no-new-privileges');
 
   // #4 mount ONLY the current generation/version workspace; never the host
