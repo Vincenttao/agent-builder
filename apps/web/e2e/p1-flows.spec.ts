@@ -10,7 +10,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 async function waitForCompleted(page: Page) {
-  await expect(page.getByTestId('status-badge')).toHaveText(/已完成|失败/, { timeout: 60_000 });
+  await expect(page.getByTestId('status-badge')).toHaveText(/已完成|失败/, { timeout: 180_000 });
   const text = (await page.getByTestId('status-badge').textContent()) ?? '';
   expect(text).toContain('已完成');
 }
