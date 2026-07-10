@@ -7,7 +7,6 @@ import { getDraft, updateDraftSpec, confirmDraft } from '@/lib/api';
 
 export function SpecConfirmation({ draftId }: { draftId: string }) {
   const searchParams = useSearchParams();
-  const prompt = searchParams.get('prompt') ?? '';
   const type = searchParams.get('type') ?? 'agent';
 
   const [draft, setDraft] = useState<DraftResponse | null>(null);

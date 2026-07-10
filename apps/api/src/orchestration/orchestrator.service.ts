@@ -25,10 +25,6 @@ import { lintGeneratedProject } from '../codegen/project-lint';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { projectRoot } from '../common/workspace';
 
-function isAgentSpec(spec: AgentSpec | WorkflowSpec): spec is AgentSpec {
-  return 'tools' in spec && !('nodes' in spec);
-}
-
 /**
  * The generation pipeline (architecture §5.2): generating -> write files ->
  * testing -> smoke test -> version + completed (or failed).
