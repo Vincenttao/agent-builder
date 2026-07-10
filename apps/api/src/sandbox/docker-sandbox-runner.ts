@@ -67,6 +67,7 @@ export class DockerSandboxRunner implements SandboxRunner {
       command: req.command,
       networkPolicy: req.networkPolicy,
       resourceLimits: req.resourceLimits,
+      envAllowlist: req.envAllowlist,
     });
 
     return new Promise<SandboxRunResult>((resolve) => {

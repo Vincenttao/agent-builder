@@ -70,6 +70,8 @@ export const ENV_ALLOWLIST: readonly string[] = [
   'OPENCODE_BASE_URL',
   'OPENCODE_MODEL',
   'OPENCODE_PROVIDER',
+  'DEEPSEEK_API_KEY',
+  'DEEPSEEK_BASE_URL',
 ] as const;
 
 export interface AllowlistResult {

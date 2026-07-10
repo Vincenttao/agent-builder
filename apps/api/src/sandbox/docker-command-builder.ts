@@ -18,6 +18,8 @@ export interface DockerCommandInput {
   command: string[];
   networkPolicy?: NetworkPolicy;
   resourceLimits?: ResourceLimits;
+  /** Env vars to inject into the container (-e KEY=VALUE). */
+  envAllowlist?: Record<string, string>;
 }
 
 const RUNTIME_BINARIES: Record<string, string> = {
@@ -54,17 +56,21 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('--security-opt', 'no-new-privileges');
   args.push('--read-only');
   args.push('--tmpfs', '/tmp:rw,nosuid,nodev,size=256m');
-  // opencode (Bun) writes to these dirs under $HOME ($HOME=/root).
-  args.push('--tmpfs', '/root/.local:rw,nosuid,nodev,size=64m');
-  args.push('--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m');
-  args.push('--tmpfs', '/root/.bun:rw,nosuid,nodev,size=64m');
-  args.push('--tmpfs', '/root/.config:rw,nosuid,nodev,size=64m');
-  args.push('--tmpfs', '/root/.opencode:rw,nosuid,nodev,size=64m');
+  // opencode (Bun) writes to $HOME (/root). Binary is at /usr/local/bin/opencode
+  // (copied there in Dockerfile) so it survives the tmpfs mount.
+  args.push('--tmpfs', '/root:rw,nosuid,nodev,size=256m');
 
   // #4 mount ONLY the current generation/version workspace; never the host
   // docker socket, never the host root (architecture §12 constraint #10).
   args.push('-v', `${input.workspacePath}:/workspace:rw`);
   args.push('-w', '/workspace');
+
+  // Inject env vars (API keys, model config) into the container.
+  if (input.envAllowlist) {
+    for (const [key, val] of Object.entries(input.envAllowlist)) {
+      if (val) args.push('-e', `${key}=${val}`);
+    }
+  }
 
   args.push(input.image);
   // The command argv is appended verbatim — no shell wrapping.
