@@ -2,7 +2,14 @@
 
 ## 0. 文档目的
 
-本文档用于交付给另一个 Agent 继续编写详细技术设计文档。技术设计 Agent 应基于本文档完成系统架构、模块设计、数据结构、接口设计、状态机、生成模板、运行沙箱、测试方案和交付计划。
+本文档是 Agent Builder Demo v0.3 的产品需求定义。技术设计 Agent 基于本文档完成了系统架构、模块设计、接口设计和代码实现。
+
+**当前代码实现状态（P2，2026-07-11）：**
+
+- 核心闭环已完成：首页输入 → Spec 确认 → 代码生成 → smoke test → 测试台/运行页 → 源码查看 → 导出
+- Spec 解析统一走 LLM（或 mock LLM），不再有针对 demo prompt 的确定性关键词绕过
+- 首页提交后先进入 Draft/Spec 确认页，用户确认后再启动代码生成
+- 代码生成支持两种引擎：TemplateEngine（确定性模板）和 OpenCodeEngine（真实 LLM + Docker 沙箱）
 
 本 PRD 的核心不是完整商业化平台，而是一个可演示的 Demo：
 
@@ -164,28 +171,30 @@ Demo 至少准备两个内置示例：
 
 ### 6.2 Agent 生成流程
 
-1. 用户选择“智能体”。
+1. 用户选择”智能体”。
 2. 用户输入自然语言需求。
-3. 系统创建对话任务，生成 `generation_id`。
-4. 系统解析需求，得到 Agent Spec。
-5. 系统制定生成计划。
-6. 系统生成项目文件。
-7. 系统运行格式检查、smoke test 或示例执行。
-8. 系统展示生成完成摘要。
-9. 用户进入 Agent 效果测试台。
-10. 用户可查看源码、运行记录、导出代码包。
+3. 系统创建 Draft，调用 LLM 解析需求得到 Agent Spec。
+4. 用户进入 Spec 确认页，可查看解析结果（名称、描述、工具、模型）并编辑 Spec JSON。
+5. 用户确认后，系统创建 Generation 并跳转工作台。
+6. 系统制定生成计划。
+7. 系统生成项目文件。
+8. 系统运行格式检查、smoke test 或示例执行。
+9. 系统展示生成完成摘要（文件数、测试结果、解析方式、引擎、版本）。
+10. 用户进入 Agent 效果测试台。
+11. 用户可查看源码、运行记录、导出代码包。
 
 ### 6.3 Workflow 生成流程
 
-1. 用户选择“工作流”。
+1. 用户选择”工作流”。
 2. 用户输入自然语言流程描述。
-3. 系统创建对话任务，生成 `generation_id`。
-4. 系统解析需求，得到 Workflow Spec。
-5. 系统生成节点图、节点输入输出和执行顺序。
-6. 系统生成 OpenJiuwen Workflow Python 工程。
-7. 系统运行 workflow smoke test。
-8. 系统展示节点执行结果。
-9. 用户可查看源码、运行记录、导出代码包。
+3. 系统创建 Draft，调用 LLM 解析需求得到 Workflow Spec。
+4. 用户进入 Spec 确认页，可查看节点、边、输入输出并编辑 Spec JSON。
+5. 用户确认后，系统创建 Generation 并跳转工作台。
+6. 系统生成节点图、节点输入输出和执行顺序。
+7. 系统生成 OpenJiuwen Workflow Python 工程。
+8. 系统运行 workflow smoke test。
+9. 系统展示节点执行结果。
+10. 用户可查看源码、运行记录、导出代码包。
 
 ### 6.4 源码查看流程
 
@@ -219,6 +228,8 @@ selected_model: string
 project_path: string
 active_version_id: string
 error_message: string | null
+parser_mode: string      # 'llm' — 所有 prompt 均通过 LLM 解析
+codegen_engine: string   # 'template' | 'opencode' — 代码生成引擎
 ```
 
 ### 7.2 Agent Spec
@@ -663,14 +674,14 @@ generated/{generation_id}/
 2. Agent 和 Workflow 至少各有一个端到端 smoke test。
 3. OpenJiuwen adapter 需要 mock 测试。
 
-## 11. API 草案
+## 11. API 草案（已实现）
 
-API 名称供技术设计参考，最终以工程约定为准。
+API 名称以实际工程路由为准。
 
-### 11.1 创建生成任务
+### 11.1 创建 Draft（Spec 解析）
 
 ```http
-POST /api/generations
+POST /api/generations/drafts
 ```
 
 请求：
@@ -678,10 +689,40 @@ POST /api/generations
 ```json
 {
   "type": "agent",
-  "prompt": "一个塔罗牌占卜 Agent。首先询问用户想要占卜的问题，之后抽取塔罗牌并解读。",
-  "mode": "auto",
-  "model": "default"
+  "prompt": "一个塔罗牌占卜 Agent。首先询问用户想要占卜的问题，之后抽取塔罗牌并解读。"
 }
+```
+
+响应：
+
+```json
+{
+  "draft_id": "draft_123",
+  "status": "pending",
+  "type": "agent",
+  "user_prompt": "...",
+  "spec": null,
+  "parser_mode": "llm",
+  "created_at": "..."
+}
+```
+
+### 11.2 获取 Draft
+
+```http
+GET /api/generations/drafts/{draft_id}
+```
+
+### 11.3 更新 Draft Spec
+
+```http
+PUT /api/generations/drafts/{draft_id}/spec
+```
+
+### 11.4 确认并创建 Generation
+
+```http
+POST /api/generations/drafts/{draft_id}/confirm
 ```
 
 响应：
@@ -693,7 +734,7 @@ POST /api/generations
 }
 ```
 
-### 11.2 获取生成任务
+### 11.5 获取生成任务
 
 ```http
 GET /api/generations/{generation_id}
@@ -849,38 +890,31 @@ POST /api/generations/{generation_id}/exports
 3. 文件 Tab。
 4. 底部运行记录。
 
-## 13. 后端模块建议
-
-技术设计可按以下模块拆分：
+## 13. 后端模块（已实现）
 
 ```text
-backend/
-├── generation_service
-├── spec_parser
-├── spec_validator
-├── project_generator
-├── template_renderer
-├── run_service
-├── export_service
-├── event_service
-├── version_service
-└── openjiuwen_adapter
+apps/api/src/
+├── generations/         # Generation 生命周期 + 事件 + 版本
+├── spec/                # Spec 解析（LLM/mock）+ 校验
+├── codegen/             # 代码生成引擎（Template / OpenCode）+ lint
+├── orchestration/       # 编排 pipeline（生成→测试→完成）+ 导出
+├── sandbox/             # Docker/Mock sandbox 运行器 + 命令构建 + 脱敏
+├── files/               # 文件树扫描 + 安全路径读取 + 导出过滤
+├── health/              # 健康检查
+└── database/            # SQLite 存储 + schema 迁移（内存模式 for CI）
 ```
 
 职责：
 
 | 模块 | 职责 |
 | --- | --- |
-| generation_service | 编排生成任务生命周期 |
-| spec_parser | 将自然语言解析为 Agent/Workflow Spec |
-| spec_validator | 校验 Spec 必填项、节点图合法性 |
-| project_generator | 生成工程目录和文件 |
-| template_renderer | 渲染 Python/配置/README/测试模板 |
-| run_service | 执行 smoke test 和示例运行 |
-| export_service | 打包源码 zip |
-| event_service | 记录和推送生成事件 |
-| version_service | 记录版本和修改摘要 |
-| openjiuwen_adapter | 封装 OpenJiuwen SDK |
+| generations | 编排生成任务生命周期、事件记录、版本管理、Draft 流程 |
+| spec | LLM/mock Spec 解析（始终走 LLM，无确定性绕过）+ Zod schema 校验 |
+| codegen | TemplateEngine（确定性模板）+ OpenCodeEngine（真实 LLM Docker 沙箱）+ lint gate |
+| orchestration | 异步 pipeline（生成 → lint → smoke test → 完成/重试）、repair、导出 |
+| sandbox | Docker/Mock sandbox 命令构建（安全参数）、执行、脱敏 |
+| files | 项目文件树扫描、安全路径读取、导出 zip 过滤 |
+| database | SQLite（better-sqlite3）+ 自动迁移 |
 
 ## 14. 生成模板要求
 
@@ -1070,16 +1104,17 @@ docs/technical/acceptance_test_plan.md
 
 ## 17. 最终边界声明
 
-Agent Builder Demo v0.3 的边界是：
+Agent Builder Demo v0.3（P2 代码实现状态）的边界是：
 
 ```text
 自然语言输入
--> 解析为 Agent/Workflow Spec
--> 生成基于 OpenJiuwen 的 Python 工程
--> 展示生成过程
--> 自动运行测试
--> 展示效果与源码
--> 导出代码包
+-> Spec 确认页（用户可见 LLM 解析结果，可编辑 JSON）
+-> 生成基于 OpenJiuwen 的 Python 工程（Template 或 OpenCode 引擎）
+-> 展示生成过程（Timeline、文件变更、命令执行、测试结果）
+-> 自动运行 smoke test
+-> Agent 测试台 / Workflow 运行页
+-> 查看源码（文件树 + 代码查看器）
+-> 导出代码包（zip，过滤密钥）
 ```
 
 不是：
@@ -1092,6 +1127,14 @@ Skills 管理平台
 企业权限平台
 ```
 
-本版本成败标准只有一个：
+**与 PRD v0.3 原文的关键差异（P2 演进）：**
 
-> 是否能清晰演示“通过自然语言生成基于 OpenJiuwen 的 Python Agent/Workflow 代码，并能运行、测试、查看源码和导出”。
+1. **Spec 解析统一走 LLM**：不再有针对 tarot/presales 的确定性关键词匹配。所有 prompt 均通过 LLM（或 mock LLM）解析。
+2. **Draft/Spec 确认流程**：用户提交 prompt 后先看到 LLM 的解析结果，可编辑 Spec JSON 后再确认生成。
+3. **双代码生成引擎**：TemplateEngine（确定性模板，快速稳定）和 OpenCodeEngine（真实 LLM + Docker 沙箱，高质量动态生成）。
+4. **lint gate**：生成后检查必需文件、禁止框架（LangGraph/CrewAI/Dify）、密钥泄露。
+5. **自动重试**：OpenCode 模式下 smoke test 失败自动重试（最多 N 次），带错误上下文反馈。
+
+本版本成败标准：
+
+> 是否能清晰演示”通过自然语言生成基于 OpenJiuwen 的 Python Agent/Workflow 代码，并能运行、测试、查看源码和导出”。

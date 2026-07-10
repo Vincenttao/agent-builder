@@ -41,21 +41,21 @@ export function ErrorPanel({
   }
 
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 p-4" data-testid="error-panel">
+    <div className="rounded-lg border border-red-200 bg-red-50/80 p-4" data-testid="error-panel">
       <div className="flex items-center gap-2">
-        <span className="text-lg">❌</span>
-        <h3 className="text-sm font-semibold text-red-800">生成失败</h3>
+        <span className="h-2 w-2 rounded-full bg-red-500" />
+        <h3 className="text-xs font-semibold text-red-900">生成失败</h3>
       </div>
-      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+      <dl className="mt-3 grid grid-cols-[72px_1fr] gap-x-3 gap-y-1.5 text-[11px]">
         <dt className="text-red-600">错误码</dt>
         <dd className="font-mono text-red-900" data-testid="error-code">{errorCode}</dd>
         <dt className="text-red-600">错误信息</dt>
         <dd className="text-red-900" data-testid="error-message">{errorMessage}</dd>
       </dl>
       {sandboxEvents.length > 0 && (
-        <details className="mt-2 text-xs text-red-700">
+        <details className="mt-3 text-[11px] text-red-700">
           <summary className="cursor-pointer">运行日志（{sandboxEvents.length} 条）</summary>
-          <ul className="mt-1 space-y-1 pl-4">
+          <ul className="mt-2 space-y-1 border-l border-red-200 pl-3">
             {sandboxEvents.map((e) => (
               <li key={e.id} className="font-mono">
                 [{e.type}] {e.message}
@@ -69,13 +69,13 @@ export function ErrorPanel({
           type="button"
           onClick={handleRepair}
           disabled={repairing}
-          className="rounded-md bg-brand px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand/90 disabled:opacity-50"
+          className="btn-primary rounded-md px-3 py-1.5 text-xs font-medium"
           data-testid="repair-button"
         >
           {repairing ? '修复中…' : '修复并重试'}
         </button>
         {repairResult && (
-          <span className="text-xs text-slate-600" data-testid="repair-result">{repairResult}</span>
+          <span className="text-xs text-zinc-600" data-testid="repair-result">{repairResult}</span>
         )}
       </div>
     </div>

@@ -6,9 +6,14 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          DEFAULT: '#6366f1',
-          dark: '#4f46e5',
+          DEFAULT: '#0f766e',
+          dark: '#115e59',
+          soft: '#ccfbf1',
+          ink: '#042f2e',
         },
+      },
+      boxShadow: {
+        panel: '0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.04)',
       },
     },
   },

@@ -38,19 +38,34 @@ export function PromptTemplates({
 }: {
   onSelect: (template: { prompt: string; type: 'agent' | 'workflow' }) => void;
 }) {
+  const demoTitles = new Set(['天气查询 Agent', '合同审核 Workflow']);
   return (
-    <div className="flex flex-wrap gap-2" data-testid="prompt-templates">
+    <div data-testid="prompt-templates">
+      <div className="mb-3">
+        <p className="section-label">Prompt Templates</p>
+        <p className="mt-1 text-xs text-zinc-500">选择模板后可继续编辑需求。</p>
+      </div>
+      <div className="space-y-2">
       {TEMPLATES.map((t) => (
         <button
           key={t.title}
           type="button"
           onClick={() => onSelect({ prompt: t.prompt, type: t.type })}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 transition-colors hover:border-brand hover:bg-brand/5 hover:text-brand"
+          className="group w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-brand/40 hover:bg-brand/5"
           data-testid="template-chip"
         >
-          {t.title}
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-zinc-800 group-hover:text-brand-ink">{t.title}</span>
+            <span className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] uppercase text-zinc-500">
+              {t.type}
+            </span>
+          </span>
+          <span className="mt-1 line-clamp-2 block text-[11px] leading-4 text-zinc-500">
+            {demoTitles.has(t.title) ? '推荐演示模板' : t.prompt}
+          </span>
         </button>
       ))}
+      </div>
     </div>
   );
 }

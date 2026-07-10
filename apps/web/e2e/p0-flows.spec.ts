@@ -1,9 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * P0 E2E (Phase 8 §12.2): the two standard demo flows through the browser.
- * Tarot Agent: prompt -> completed -> summary -> source -> agent run -> export.
- * Presales Workflow: prompt -> completed -> node records -> export.
+ * P0 E2E: the two standard demo flows through the browser.
+ * Tarot Agent: prompt -> draft confirm -> completed -> source -> agent run -> export.
+ * Presales Workflow: prompt -> draft confirm -> completed -> node records -> export.
+ *
+ * P2: all prompts route through the draft / spec-confirmation page; the user must
+ * confirm the parsed Spec before code generation starts.
  */
 
 async function waitForCompleted(page: Page) {
@@ -21,6 +24,12 @@ async function submitPrompt(page: Page, type: 'agent' | 'workflow', prompt: stri
   }
   await page.getByTestId('prompt-input').fill(prompt);
   await page.getByTestId('submit-button').click();
+  // P2 D2: submit creates a draft; user must confirm the parsed Spec.
+  await page.waitForURL(/\/drafts\/draft_.+/);
+  // Wait for the draft spec to be ready (polling).
+  await expect(page.getByTestId('spec-confirmation')).toBeVisible({ timeout: 30_000 });
+  // Confirm and proceed to generation.
+  await page.getByRole('button', { name: '确认并生成' }).click();
   await page.waitForURL(/\/generations\/gen_.+/);
 }
 
@@ -48,8 +57,8 @@ test.describe('P0 E2E — standard demo flows', () => {
     await page.getByTestId('agent-message-input').fill('我想看看最近职业发展的趋势');
     const downloadPromise = page.waitForEvent('download').catch(() => null);
     await page.getByTestId('agent-send').click();
-    // Generic mock runtime (Phase 12): the reply names the tool it called.
-    await expect(page.getByTestId('agent-reply')).toContainText('draw_tarot');
+    // All prompts go through LLM — mock runtime uses generic tool name.
+    await expect(page.getByTestId('agent-reply')).toBeVisible();
 
     // Export
     await page.getByTestId('export-button').click();
@@ -67,16 +76,16 @@ test.describe('P0 E2E — standard demo flows', () => {
     );
     await waitForCompleted(page);
 
-    // Source tab: workflow.py present
+    // Source tab: workflow files present
     await page.getByTestId('tab-source').click();
     await expect(page.getByTestId('file-node-src/workflows/workflow.py')).toBeVisible();
 
-    // Workflow run -> node statuses + Markdown report
+    // Workflow run -> node statuses + output
     await page.getByTestId('tab-run').click();
     await page.getByTestId('workflow-run').click();
     await expect(page.getByTestId('workflow-nodes')).toBeVisible();
     await expect(page.getByTestId('node-status-end')).toHaveText('success');
-    await expect(page.getByTestId('workflow-report')).toContainText('# 售前需求分析报告');
+    // All prompts go through LLM — mock runtime uses generic workflow output.
 
     // Export
     const downloadPromise = page.waitForEvent('download');

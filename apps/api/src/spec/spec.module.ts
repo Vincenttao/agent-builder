@@ -6,19 +6,13 @@ import {
   OpenAiCompatibleSpecParser,
   createFetchChatCompletion,
 } from './openai-compatible-spec-parser';
-import type { LlmSpecParser, SpecParserMode } from './llm-spec-parser';
-
-function resolveMode(): SpecParserMode {
-  const m = process.env.SPEC_PARSER_MODE ?? 'hybrid';
-  return m === 'deterministic' || m === 'llm' || m === 'hybrid' ? m : 'hybrid';
-}
+import type { LlmSpecParser } from './llm-spec-parser';
 
 /**
- * Resolve the LLM parser from env (§4). `mock` (default) needs no key and is
- * used by CI/E2E; `openai-compatible` reads SPEC_LLM_* and is always wired as
- * the real parser — if the gateway/key is missing or unreachable it fails at
- * parse time with a clear PROMPT_PARSE_FAILED ("LLM 不可用"), never a silent
- * mock fallback that produces wrong Specs (§3.2 fallback #3 / §13 test #1).
+ * Resolve the LLM parser from env. `mock` (default) needs no key and is
+ * used by CI/E2E; `openai-compatible` reads SPEC_LLM_* for real LLM parsing.
+ * Every prompt always goes through the LLM parser — there is no longer a
+ * deterministic keyword-match bypass for demo prompts.
  */
 function resolveLlmParser(): LlmSpecParser {
   const provider = process.env.SPEC_LLM_PROVIDER ?? 'mock';
@@ -40,7 +34,7 @@ function resolveLlmParser(): LlmSpecParser {
     SpecValidatorService,
     {
       provide: SpecParserService,
-      useFactory: (llm: LlmSpecParser) => new SpecParserService(llm, resolveMode()),
+      useFactory: (llm: LlmSpecParser) => new SpecParserService(llm),
       inject: ['LLM_SPEC_PARSER'],
     },
   ],

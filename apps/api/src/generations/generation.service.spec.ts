@@ -9,8 +9,8 @@ import { GenerationService } from './generation.service';
 import { SpecParserService } from '../spec/spec-parser.service';
 import { MockLlmSpecParser } from '../spec/mock-llm-spec-parser';
 import { SpecValidatorService } from '../spec/spec-validator.service';
-import type { LlmSpecParser, SpecParserMode } from '../spec/llm-spec-parser';
-import { expectAgentBuilderError, expectAgentBuilderErrorAsync } from '../testing/expect-error';
+import type { LlmSpecParser } from '../spec/llm-spec-parser';
+import { expectAgentBuilderError } from '../testing/expect-error';
 import {
   GenerationStatus,
   EventType,
@@ -26,7 +26,7 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     for (const d of dbs) d.close();
   });
 
-  function build(mode: SpecParserMode = 'hybrid', llm: LlmSpecParser = new MockLlmSpecParser()) {
+  function build(llm: LlmSpecParser = new MockLlmSpecParser()) {
     const db = createInMemoryDb();
     dbs.push(db);
     const genRepo = new GenerationRepository(db);
@@ -34,7 +34,7 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     const versionRepo = new VersionRepository(db);
     const specRepo = new SpecRepository(db);
     const eventService = new EventService(eventRepo);
-    const specParser = new SpecParserService(llm, mode);
+    const specParser = new SpecParserService(llm);
     const specValidator = new SpecValidatorService();
     const genService = new GenerationService(
       genRepo,
@@ -79,15 +79,16 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
 
     const spec = await genService.parseAndPersistSpec(gen.id);
 
-    expect(spec.name).toBe('塔罗牌占卜 Agent');
+    // All prompts go through LLM — mock returns generic spec.
+    expect(spec.name).toBe('通用智能体');
     const persisted = specRepo.getByGeneration(gen.id);
     expect(persisted).not.toBeNull();
-    expect(persisted!.spec.name).toBe('塔罗牌占卜 Agent');
-    expect(persisted!.parser_mode).toBe('hybrid');
-    expect(persisted!.provider).toBe('deterministic');
+    expect(persisted!.spec.name).toBe('通用智能体');
+    expect(persisted!.parser_mode).toBe('llm');
+    expect(persisted!.provider).toBe('mock');
     const events = eventRepo.listByGeneration(gen.id);
     expect(events.some((e) => e.type === EventType.Thought)).toBe(true);
-    expect(genRepo.getById(gen.id)!.title).toBe('塔罗牌占卜 Agent');
+    expect(genRepo.getById(gen.id)!.title).toBe('通用智能体');
   });
 
   it('#3 parseAndPersistSpec is idempotent — does not re-invoke the parser', async () => {
@@ -100,7 +101,7 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
         return new MockLlmSpecParser().parse(p, t);
       },
     };
-    const { genService } = build('hybrid', countingLlm);
+    const { genService } = build(countingLlm);
     const gen = await genService.createGeneration({
       type: GenerationType.Agent,
       prompt: '做一个天气查询 Agent',
@@ -124,7 +125,8 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     });
     await expectAgentBuilderError(() => genService.getSpec(gen.id), ErrorCode.PromptParseFailed);
     await genService.parseAndPersistSpec(gen.id);
-    expect(genService.getSpec(gen.id).name).toBe('塔罗牌占卜 Agent');
+    // All prompts go through LLM — even tarot returns the mock generic spec.
+    expect(genService.getSpec(gen.id).name).toBe('通用智能体');
   });
 
   it('#5 a non-example prompt parses via the mock LLM and persists a non-tarot spec', async () => {
@@ -140,19 +142,17 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     expect(specRepo.getByGeneration(gen.id)!.provider).toBe('mock');
   });
 
-  it('#6 deterministic mode rejects a non-example prompt with a clear (non-P0) error', async () => {
-    const { genService } = build('deterministic');
+  it('#6 all prompts (including demo keywords) go through the LLM parser', async () => {
+    const { genService } = build();
     const gen = await genService.createGeneration({
       type: GenerationType.Agent,
       prompt: '做一个天气查询 Agent',
       mode: 'auto',
       model: 'default',
     });
-    const err = await expectAgentBuilderErrorAsync(
-      () => genService.parseAndPersistSpec(gen.id),
-      ErrorCode.PromptParseFailed,
-    );
-    expect(err.message).not.toContain('P0 deterministic parser 暂仅支持');
+    const spec = await genService.parseAndPersistSpec(gen.id);
+    // Mock LLM returns generic spec — no more deterministic/demo bypass.
+    expect(spec.name).toBe('通用智能体');
   });
 
   it('#7 a failed re-generation does NOT overwrite the previous completed version (PRD FR-012)', async () => {

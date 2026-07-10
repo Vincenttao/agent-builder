@@ -16,10 +16,6 @@ const EXAMPLES: Record<GenerationType, string> = {
     '读取客户需求文档，抽取客户目标和限制条件，匹配可演示的解决方案，生成 Demo 清单并输出一份 Markdown 报告。',
 };
 
-type CreateGenerationResponse =
-  | { generation_id: string; status: string }
-  | { error_code: string; message: string };
-
 /**
  * Home page prompt composer (PRD §6.1 / §12.1).
  *
@@ -48,17 +44,19 @@ export function PromptComposer() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch('/api/generations', {
+      // Route through the draft/spec-confirmation flow so users can review
+      // and edit the parsed Spec before code generation starts (P2 D2).
+      const res = await fetch('/api/generations/drafts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, prompt: trimmed, mode: 'auto', model: 'default' }),
+        body: JSON.stringify({ type, prompt: trimmed }),
       });
-      const data = (await res.json()) as CreateGenerationResponse;
-      if (!res.ok || !('generation_id' in data)) {
-        setError('message' in data ? data.message : '生成失败，请重试');
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message ?? '生成失败，请重试');
         return;
       }
-      window.location.href = `/generations/${data.generation_id}`;
+      window.location.href = `/drafts/${data.draft_id}?type=${type}`;
     } catch {
       setError('网络错误，请检查后端服务是否启动');
     } finally {
@@ -67,74 +65,115 @@ export function PromptComposer() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-3xl flex-col gap-4" data-testid="prompt-composer">
-      <div className="flex items-center gap-2" role="radiogroup" aria-label="生成类型">
-        {TYPE_OPTIONS.map((opt) => {
-          const active = type === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              data-testid={`type-${opt.value}`}
-              onClick={() => setType(opt.value)}
-              className={
-                'rounded-full border px-4 py-1.5 text-sm font-medium transition ' +
-                (active
-                  ? 'border-brand bg-brand text-white'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-brand')
-              }
-            >
-              {opt.label}
-              <span className="ml-1.5 text-xs opacity-70">{opt.hint}</span>
-            </button>
-          );
-        })}
+    <form
+      onSubmit={handleSubmit}
+      className="surface flex min-h-[520px] w-full flex-col rounded-lg"
+      data-testid="prompt-composer"
+    >
+      <div className="flex items-start justify-between border-b border-zinc-200 px-5 py-4">
+        <div>
+          <p className="section-label">New Generation</p>
+          <h2 className="mt-1 text-lg font-semibold text-zinc-950">创建 OpenJiuwen 工程</h2>
+          <p className="mt-1 text-xs text-zinc-500">选择对象类型，输入业务需求，生成可运行 Python 项目。</p>
+        </div>
+        <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-500">
+          Mode Auto
+        </span>
       </div>
 
-      <PromptTemplates onSelect={handleSelectTemplate} />
+      <div className="grid flex-1 gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div>
+            <p className="mb-2 text-xs font-medium text-zinc-700">生成类型</p>
+            <div
+              className="inline-grid grid-cols-2 rounded-md border border-zinc-300 bg-zinc-100 p-0.5"
+              role="radiogroup"
+              aria-label="生成类型"
+            >
+              {TYPE_OPTIONS.map((opt) => {
+                const active = type === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    data-testid={`type-${opt.value}`}
+                    onClick={() => setType(opt.value)}
+                    className={
+                      'min-w-36 rounded px-3 py-2 text-left transition ' +
+                      (active
+                        ? 'bg-white text-brand-ink shadow-sm'
+                        : 'text-zinc-500 hover:text-zinc-800')
+                    }
+                  >
+                    <span className="block text-xs font-semibold">{opt.label}</span>
+                    <span className="mt-0.5 block text-[11px]">{opt.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      <label htmlFor="prompt" className="sr-only">
-        自然语言需求
-      </label>
-      <textarea
-        id="prompt"
-        name="prompt"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="描述你想要的 Agent 或 Workflow…"
-        rows={6}
-        className="w-full resize-y rounded-xl border border-slate-300 bg-white p-4 text-sm shadow-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
-        data-testid="prompt-input"
-      />
+          <div className="flex flex-1 flex-col">
+            <div className="mb-2 flex items-center justify-between">
+              <label htmlFor="prompt" className="text-xs font-medium text-zinc-700">
+                自然语言需求
+              </label>
+              <button
+                type="button"
+                onClick={fillExample}
+                className="text-xs font-medium text-brand hover:text-brand-dark"
+                data-testid="fill-example"
+              >
+                填充当前类型示例
+              </button>
+            </div>
+            <textarea
+              id="prompt"
+              name="prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="例如：读取客户需求，抽取目标和限制条件，匹配可演示方案，输出 Markdown 报告。"
+              rows={12}
+              className="control min-h-64 w-full flex-1 resize-none rounded-md px-4 py-3 text-[13px] leading-6"
+              data-testid="prompt-input"
+            />
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={fillExample}
-          className="text-xs text-slate-500 underline-offset-2 hover:underline"
-          data-testid="fill-example"
-        >
-          填充示例
-        </button>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-500" data-testid="mode-label">
-            模式：Auto
-          </span>
-          <button
-            type="submit"
-            disabled={submitting || !prompt.trim()}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white shadow transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
-            data-testid="submit-button"
-          >
-            {submitting ? '生成中…' : '开始生成'}
-          </button>
+        <div className="border-l border-zinc-200 pl-5">
+          <PromptTemplates onSelect={handleSelectTemplate} />
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-500">
+            OpenJiuwen
+          </span>
+          <span className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-500">
+            Context ready
+          </span>
+          <span
+            className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-600"
+            data-testid="mode-label"
+          >
+            Auto
+          </span>
+        </div>
+        <button
+          type="submit"
+          disabled={submitting || !prompt.trim()}
+          className="btn-primary rounded-md px-5 py-2 text-xs font-semibold"
+          data-testid="submit-button"
+        >
+          {submitting ? '生成中…' : '开始生成'}
+        </button>
+      </div>
+
       {error && (
-        <p role="alert" className="text-sm text-red-600" data-testid="submit-error">
+        <p role="alert" className="border-t border-red-200 bg-red-50 px-5 py-3 text-xs text-red-700" data-testid="submit-error">
           {error}
         </p>
       )}

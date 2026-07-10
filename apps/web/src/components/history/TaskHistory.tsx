@@ -15,12 +15,12 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-slate-100 text-slate-600',
-  planning: 'bg-blue-100 text-blue-700',
-  generating: 'bg-amber-100 text-amber-700',
-  testing: 'bg-purple-100 text-purple-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  failed: 'bg-red-100 text-red-700',
+  pending: 'bg-zinc-100 text-zinc-600',
+  planning: 'bg-cyan-50 text-cyan-700',
+  generating: 'bg-amber-50 text-amber-700',
+  testing: 'bg-teal-50 text-teal-700',
+  completed: 'bg-emerald-50 text-emerald-700',
+  failed: 'bg-red-50 text-red-700',
 };
 
 export function TaskHistory() {
@@ -39,19 +39,22 @@ export function TaskHistory() {
   }, [filter]);
 
   return (
-    <div className="mx-auto max-w-2xl py-8" data-testid="task-history">
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">任务历史</h2>
+    <section className="surface rounded-lg" data-testid="task-history">
+      <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+        <div>
+          <p className="section-label">History</p>
+          <h2 className="mt-1 text-sm font-semibold text-zinc-950">任务历史</h2>
+        </div>
         <div className="flex gap-2">
           {['', 'completed', 'failed'].map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => setFilter(s)}
-              className={`rounded-full px-3 py-1 text-xs transition-colors ${
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 filter === s
                   ? 'bg-brand text-white'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:border-brand'
+                  : 'border border-zinc-200 bg-white text-zinc-600 hover:border-brand/50 hover:text-brand-ink'
               }`}
               data-testid={`filter-${s || 'all'}`}
             >
@@ -61,45 +64,43 @@ export function TaskHistory() {
         </div>
       </div>
 
-      {loading && <p className="py-8 text-center text-sm text-slate-400">加载中…</p>}
-      {error && <p className="py-8 text-center text-sm text-red-600">{error}</p>}
+      {loading && <p className="py-8 text-center text-xs text-zinc-400">加载中…</p>}
+      {error && <p className="py-8 text-center text-xs text-red-600">{error}</p>}
 
       {!loading && !error && generations.length === 0 && (
-        <p className="py-8 text-center text-sm text-slate-400">暂无任务记录</p>
+        <p className="py-8 text-center text-xs text-zinc-400">暂无任务记录</p>
       )}
 
       {!loading && generations.length > 0 && (
-        <ul className="space-y-3">
+        <ul className="divide-y divide-zinc-100">
           {generations.map((g) => (
             <li key={g.generation_id}>
               <Link
                 href={`/generations/${g.generation_id}`}
-                className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-5 py-3 transition hover:bg-zinc-50"
                 data-testid="task-item"
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-slate-900">{g.title}</h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {g.type === 'workflow' ? 'Workflow' : 'Agent'}
-                      {g.parser_mode && ` · ${g.parser_mode}`}
-                      {g.codegen_engine && ` · ${g.codegen_engine}`}
-                    </p>
-                  </div>
-                  <span
-                    className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[g.status] ?? 'bg-slate-100 text-slate-600'}`}
-                  >
-                    {STATUS_LABEL[g.status] ?? g.status}
-                  </span>
+                <div className="min-w-0">
+                  <h3 className="truncate text-xs font-semibold text-zinc-900">{g.title}</h3>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    {g.type === 'workflow' ? 'Workflow' : 'Agent'}
+                    {g.parser_mode && ` / ${g.parser_mode}`}
+                    {g.codegen_engine && ` / ${g.codegen_engine}`}
+                    <span className="ml-2 text-zinc-400">
+                      {new Date(g.created_at).toLocaleString('zh-CN')}
+                    </span>
+                  </p>
                 </div>
-                <p className="mt-2 text-xs text-slate-400">
-                  {new Date(g.created_at).toLocaleString('zh-CN')}
-                </p>
+                <span
+                  className={`inline-flex rounded px-2 py-1 text-[11px] font-medium ${STATUS_COLOR[g.status] ?? 'bg-zinc-100 text-zinc-600'}`}
+                >
+                  {STATUS_LABEL[g.status] ?? g.status}
+                </span>
               </Link>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

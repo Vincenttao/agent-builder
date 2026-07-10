@@ -24,42 +24,42 @@ export function CompletionSummary({
 
   return (
     <div
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-4"
       data-testid="completion-summary"
     >
       <div className="flex items-center gap-2">
-        <span className="text-lg">✅</span>
-        <h3 className="text-sm font-semibold text-slate-900">生成完成摘要</h3>
+        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        <h3 className="text-xs font-semibold text-emerald-950">生成完成摘要</h3>
       </div>
-      <p className="mt-2 text-sm text-slate-700" data-testid="summary-text">
+      <p className="mt-2 text-xs leading-5 text-emerald-900" data-testid="summary-text">
         {output?.message ?? '生成已完成'}
       </p>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
-        <dt>测试结果</dt>
-        <dd data-testid="test-result" className={passed ? 'text-emerald-600' : 'text-red-600'}>
+      <dl className="mt-3 grid grid-cols-[92px_1fr] gap-x-3 gap-y-1.5 text-[11px]">
+        <dt className="text-emerald-700">测试结果</dt>
+        <dd data-testid="test-result" className={passed ? 'font-medium text-emerald-800' : 'font-medium text-red-700'}>
           {passed ? '通过' : '失败'}
         </dd>
-        <dt>文件数量</dt>
-        <dd data-testid="file-count">{fileCount}</dd>
-        <dt>解析方式</dt>
-        <dd data-testid="parser-mode">{parserMode ?? '—'}</dd>
-        <dt>代码引擎</dt>
-        <dd data-testid="codegen-engine">
+        <dt className="text-emerald-700">文件数量</dt>
+        <dd data-testid="file-count" className="text-emerald-950">{fileCount}</dd>
+        <dt className="text-emerald-700">解析方式</dt>
+        <dd data-testid="parser-mode" className="text-emerald-950">{parserMode ?? '-'}</dd>
+        <dt className="text-emerald-700">代码引擎</dt>
+        <dd data-testid="codegen-engine" className="text-emerald-950">
           {engine ?? '—'}
           {fallback && <span className="ml-1 text-amber-600">（已回退）</span>}
         </dd>
         {provider && (
           <>
-            <dt>Spec 来源</dt>
-            <dd>{provider}</dd>
+            <dt className="text-emerald-700">Spec 来源</dt>
+            <dd className="text-emerald-950">{provider}</dd>
           </>
         )}
         {version && (
           <>
-            <dt>版本</dt>
-            <dd>{version.version_label}</dd>
-            <dt>运行模式</dt>
-            <dd>{version.mock_mode ? 'mock' : 'real'}</dd>
+            <dt className="text-emerald-700">版本</dt>
+            <dd className="text-emerald-950">{version.version_label}</dd>
+            <dt className="text-emerald-700">运行模式</dt>
+            <dd className="text-emerald-950">{version.mock_mode ? 'mock' : 'real'}</dd>
           </>
         )}
       </dl>

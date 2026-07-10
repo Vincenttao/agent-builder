@@ -1,12 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * P1 E2E (Phase 12 §1 #1/#2/#6/#7): non-example prompts go end-to-end through
- * the real LLM parser path (mock provider) — generate -> source -> simulate
- * run -> export. The mock run replies must NOT leak tarot/presales demo language.
+ * P1 E2E: non-example prompts go end-to-end through the LLM parser path
+ * (mock provider) — draft confirm -> generate -> source -> run -> export.
  *
- * These exercise the Phase 9 hybrid parser (non-demo prompt -> mock LLM -> a
- * generic Spec) and the Phase 12 generic mock runtime.
+ * P2: all prompts route through the draft / spec-confirmation page.
  */
 
 async function waitForCompleted(page: Page) {
@@ -24,6 +22,10 @@ async function submitPrompt(page: Page, type: 'agent' | 'workflow', prompt: stri
   }
   await page.getByTestId('prompt-input').fill(prompt);
   await page.getByTestId('submit-button').click();
+  // P2 D2: submit creates a draft; user must confirm the parsed Spec.
+  await page.waitForURL(/\/drafts\/draft_.+/);
+  await expect(page.getByTestId('spec-confirmation')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: '确认并生成' }).click();
   await page.waitForURL(/\/generations\/gen_.+/);
 }
 

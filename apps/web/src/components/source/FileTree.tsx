@@ -13,14 +13,16 @@ function Tree({ nodes, depth, onSelect, selectedPath }: {
           <button
             type="button"
             onClick={() => n.type === 'file' && onSelect(n.path)}
-            className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-sm hover:bg-slate-100 ${
-              selectedPath === n.path ? 'bg-brand/10 font-medium text-brand' : 'text-slate-700'
+            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-white ${
+              selectedPath === n.path ? 'bg-white font-semibold text-brand-ink shadow-sm' : 'text-zinc-600'
             }`}
             style={{ paddingLeft: `${depth * 12 + 4}px` }}
             data-testid={`file-node-${n.path}`}
             disabled={n.type !== 'file'}
           >
-            <span className="text-xs">{n.type === 'directory' ? '📁' : '📄'}</span>
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${n.type === 'directory' ? 'bg-amber-500' : 'bg-zinc-400'}`}
+            />
             <span className="truncate">{n.name}</span>
           </button>
           {n.type === 'directory' && n.children && (
@@ -43,10 +45,10 @@ export function FileTree({
   selectedPath: string | null;
 }) {
   if (tree.length === 0) {
-    return <p className="p-2 text-xs text-slate-400" data-testid="filetree-empty">尚无文件</p>;
+    return <p className="p-3 text-xs text-zinc-400" data-testid="filetree-empty">尚无文件</p>;
   }
   return (
-    <div className="overflow-auto" data-testid="filetree">
+    <div className="overflow-auto p-2" data-testid="filetree">
       <Tree nodes={tree} depth={0} onSelect={onSelect} selectedPath={selectedPath} />
     </div>
   );

@@ -32,7 +32,12 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
     try {
       const result: RunnerResult = await workflowRun(generationId, { requirement_doc: doc });
       setNodes((result.events as unknown as NodeRecord[]) ?? []);
-      setReport((result.output as { report?: string } | null)?.report ?? null);
+      const out = result.output as Record<string, unknown> | null;
+      setReport(
+        (out?.report as string) ??
+        (out?.result as string) ??
+        (out ? JSON.stringify(out, null, 2) : null)
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : '运行失败');
     } finally {
@@ -41,17 +46,27 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
   }
 
   const statusTone: Record<string, string> = {
-    success: 'text-emerald-600',
-    failed: 'text-red-600',
-    running: 'text-amber-600',
-    pending: 'text-slate-400',
+    success: 'bg-emerald-50 text-emerald-700',
+    failed: 'bg-red-50 text-red-700',
+    running: 'bg-amber-50 text-amber-700',
+    pending: 'bg-zinc-100 text-zinc-500',
   };
 
   return (
-    <div className="flex h-full flex-col gap-3" data-testid="workflow-run-panel">
+    <div className="surface flex h-full flex-col gap-4 rounded-lg p-4" data-testid="workflow-run-panel">
+      <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
+        <div>
+          <p className="section-label">Workflow Run</p>
+          <h2 className="mt-1 text-sm font-semibold text-zinc-950">流程运行记录</h2>
+        </div>
+        <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
+          Node Trace
+        </span>
+      </div>
+
       <form onSubmit={run} className="flex gap-2">
         <textarea
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand"
+          className="control flex-1 resize-none rounded-md px-3 py-2 text-xs leading-5"
           rows={2}
           value={doc}
           onChange={(e) => setDoc(e.target.value)}
@@ -60,7 +75,7 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
         <button
           type="submit"
           disabled={running}
-          className="self-start rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="btn-primary self-start rounded-md px-4 py-2 text-xs font-semibold"
           data-testid="workflow-run"
         >
           {running ? '运行中…' : '运行 Workflow'}
@@ -68,13 +83,16 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
       </form>
 
       {nodes.length > 0 && (
-        <div data-testid="workflow-nodes" className="rounded-lg border border-slate-200 p-2">
-          <h4 className="mb-1 text-xs font-semibold text-slate-500">节点运行状态</h4>
-          <ul className="text-sm">
+        <div data-testid="workflow-nodes" className="overflow-hidden rounded-md border border-zinc-200">
+          <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700">
+            节点运行状态
+          </div>
+          <ul className="divide-y divide-zinc-100 text-xs">
             {nodes.map((n) => (
-              <li key={n.node_id} className="flex justify-between py-0.5">
-                <span>{n.name}</span>
-                <span className={statusTone[n.status] ?? 'text-slate-600'} data-testid={`node-status-${n.node_id}`}>
+              <li key={n.node_id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2">
+                <span className="truncate font-medium text-zinc-800">{n.name}</span>
+                <span className="font-mono text-[11px] text-zinc-400">{n.duration_ms ? `${n.duration_ms}ms` : '-'}</span>
+                <span className={`rounded px-2 py-0.5 text-[11px] font-medium ${statusTone[n.status] ?? 'bg-zinc-100 text-zinc-600'}`} data-testid={`node-status-${n.node_id}`}>
                   {n.status}
                 </span>
               </li>
@@ -84,13 +102,13 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
       )}
 
       {report && (
-        <pre className="overflow-auto rounded bg-slate-50 p-3 text-xs whitespace-pre-wrap" data-testid="workflow-report">
+        <pre className="overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 whitespace-pre-wrap text-zinc-800" data-testid="workflow-report">
           {report}
         </pre>
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-red-600" data-testid="workflow-error">
+        <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" data-testid="workflow-error">
           {error}
         </p>
       )}
