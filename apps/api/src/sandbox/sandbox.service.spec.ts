@@ -153,12 +153,15 @@ describe('SandboxService (Phase 3 §7.2 — mock sandbox fallback)', () => {
     fs.rmSync(ws, { recursive: true, force: true });
   });
 
-  it('selectRunner falls back to mock when no container runtime is available', () => {
-    // This dev environment has no docker/podman binary.
-    const sel = sandbox.selectRunner(SandboxRuntime.Docker);
-    expect(sel.mock).toBe(true);
+  it('selectRunner always returns mock runner when Mock is requested', () => {
+    const sel = sandbox.selectRunner(SandboxRuntime.Mock);
     expect(sel.runner).toBe('mock');
+    expect(sel.mock).toBe(true);
+  });
 
-    expect(sandbox.selectRunner(SandboxRuntime.Mock).runner).toBe('mock');
+  it('selectRunner picks the best available runtime for Docker requests', () => {
+    const sel = sandbox.selectRunner(SandboxRuntime.Docker);
+    // Uses Docker if available, mock otherwise.
+    expect(['docker', 'mock']).toContain(sel.runner);
   });
 });

@@ -16,9 +16,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# Install opencode via npm. The binary comes from the linux-x64 platform package.
+# Install opencode via npm. The linux-x64 platform package provides the binary
+# as "oh-my-opencode". We symlink it to "opencode" for compatibility.
+# npm -g on Debian installs to /usr/lib/node_modules (not /usr/local/lib).
 RUN npm install -g oh-my-opencode-linux-x64@3.12.3 oh-my-opencode@3.12.3 && \
-    cp /root/.opencode/bin/opencode /usr/local/bin/opencode
+    ln -s /usr/lib/node_modules/oh-my-opencode-linux-x64/bin/oh-my-opencode /usr/local/bin/opencode
 
 # Non-root user for sandbox execution.
 RUN useradd --create-home --shell /bin/bash sandbox

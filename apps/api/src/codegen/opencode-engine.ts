@@ -146,11 +146,14 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       );
     };
 
+    // Build version-appropriate opencode command.
+    const cmd = this.buildOpencodeCommand(modelArg);
+
     const result = await this.sandbox.run({
       generationId: context.generationId,
       versionId: context.versionId,
       jobType: JobType.OpencodeGeneration,
-      command: ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'],
+      command: cmd,
       workspacePath: context.projectPath,
       networkPolicy,
       timeoutSeconds,
@@ -268,6 +271,21 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     // Return the first meaningful error line
     const first = lines.find((l) => l.length > 10);
     return first ? first.trim().slice(0, 200) : lines[0].trim().slice(0, 200);
+  }
+
+  /**
+   * Build the opencode run command, adapting flags to the CLI style.
+   * v3 (oh-my-opencode, Docker):   run --model p/m --json "message"
+   * v1 (standalone opencode, host): run --dangerously-skip-permissions --model p/m --format json file
+   * Set OPENCODE_CLI_STYLE in .env: "v3" (default) or "v1".
+   */
+  private buildOpencodeCommand(modelArg: string): string[] {
+    const style = process.env.OPENCODE_CLI_STYLE ?? 'v3';
+    if (style === 'v1') {
+      return ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'];
+    }
+    // v3: read the prompt file and pass as message (Docker-compatible).
+    return ['opencode', 'run', '--model', modelArg, '--json', 'Read .agent_builder/prompt.md and generate the project'];
   }
 
   /** Collect configured opencode env vars to inject into the sandbox. */

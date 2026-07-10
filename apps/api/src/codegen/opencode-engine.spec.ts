@@ -149,8 +149,9 @@ describe('OpenCodeEngine', () => {
       expect(runMock).toHaveBeenCalledTimes(1);
       const runReq = runMock.mock.calls[0][0];
       expect(runReq.jobType).toBe(JobType.OpencodeGeneration);
+      // Default v3 style (Docker)
       expect(runReq.command).toEqual([
-        'opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', 'deepseek/deepseek-chat', '--format', 'json', '.agent_builder/prompt.md',
+        'opencode', 'run', '--model', 'deepseek/deepseek-chat', '--json', 'Read .agent_builder/prompt.md and generate the project',
       ]);
       expect(runReq.workspacePath).toBe(projectPath);
       expect(runReq.networkPolicy).toBe(NetworkPolicy.Controlled);
