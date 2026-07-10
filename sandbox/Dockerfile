@@ -6,7 +6,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl ca-certificates make build-essential \
+    && apt-get install -y --no-install-recommends git curl ca-certificates make build-essential ripgrep fzf \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js LTS — opencode is a Node tool.
