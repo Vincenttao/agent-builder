@@ -23,6 +23,7 @@ services:
       - WORKSPACE_DIR=/workspace
       - HOST_WORKSPACE_DIR=${PWD}/workspace
       - METADATA_DB_PATH=/workspace/metadata.db
+      - OPENCODE_CLI_STYLE=v0
     depends_on:
       sandbox-image:
         condition: service_completed_successfully

@@ -24,15 +24,12 @@ RUN curl -fsSL -o /tmp/opencode.tar.gz \
     tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin/ opencode && \
     rm /tmp/opencode.tar.gz
 
-# Non-root user for sandbox execution.
-RUN useradd --create-home --shell /bin/bash sandbox
-
-# Pre-configured DeepSeek provider (no API key — injected at runtime).
-RUN mkdir -p /home/sandbox/.config/opencode
-COPY opencode-config.json /home/sandbox/.config/opencode/opencode.json
-RUN chown -R sandbox:sandbox /home/sandbox/.config
+# Pre-configured DeepSeek provider (no API key — injected via DEEPSEEK_API_KEY).
+# opencode reads config from $HOME/.config/opencode/opencode.json.
+ENV HOME=/root
+RUN mkdir -p /root/.config/opencode
+COPY opencode-config.json /root/.config/opencode/opencode.json
 
 WORKDIR /workspace
-USER sandbox
 
 CMD ["opencode", "--version"]
