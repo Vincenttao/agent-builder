@@ -9,8 +9,8 @@ COPY packages/shared-contracts/tsconfig.json packages/shared-contracts/tsconfig.
 COPY apps/web/package.json apps/web/package.json
 COPY apps/web/tsconfig.json apps/web/tsconfig.json
 COPY apps/web/next.config.mjs apps/web/next.config.mjs
-COPY apps/web/postcss.config.mjs apps/web/postcss.config.mjs 2>/dev/null || true
-COPY apps/web/tailwind.config.ts apps/web/tailwind.config.ts 2>/dev/null || true
+COPY apps/web/postcss.config.js apps/web/postcss.config.js
+COPY apps/web/tailwind.config.ts apps/web/tailwind.config.ts
 
 RUN npm install --workspaces=false || npm install
 
