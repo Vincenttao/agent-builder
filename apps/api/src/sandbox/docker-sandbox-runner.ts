@@ -50,10 +50,20 @@ export class DockerSandboxRunner implements SandboxRunner {
     const stderrPath = path.join(logDir, 'stderr.log');
     const start = Date.now();
 
+    // Translate container workspace path to host path for docker -v mounts.
+    // When the API runs in Docker, WORKSPACE_DIR is /workspace (container),
+    // but the Docker daemon needs the host path (e.g. ./workspace).
+    let hostWorkspace = req.workspacePath;
+    const hostDir = process.env.HOST_WORKSPACE_DIR;
+    const containerDir = process.env.WORKSPACE_DIR;
+    if (hostDir && containerDir && hostDir !== containerDir) {
+      hostWorkspace = req.workspacePath.replace(containerDir, hostDir);
+    }
+
     const args = buildDockerArgs({
       runtime: req.runtime ?? SandboxRuntime.Docker,
       image: req.image ?? DEFAULT_IMAGE,
-      workspacePath: req.workspacePath,
+      workspacePath: hostWorkspace,
       command: req.command,
       networkPolicy: req.networkPolicy,
       resourceLimits: req.resourceLimits,
@@ -66,8 +76,30 @@ export class DockerSandboxRunner implements SandboxRunner {
       });
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
-      child.stdout?.on('data', (c: Buffer) => stdoutChunks.push(c));
-      child.stderr?.on('data', (c: Buffer) => stderrChunks.push(c));
+      let stdoutLineBuf = '';
+      let stderrLineBuf = '';
+      child.stdout?.on('data', (c: Buffer) => {
+        stdoutChunks.push(c);
+        if (req.onStdout) {
+          stdoutLineBuf += c.toString('utf8');
+          const lines = stdoutLineBuf.split('\n');
+          stdoutLineBuf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (line.trim()) req.onStdout(line);
+          }
+        }
+      });
+      child.stderr?.on('data', (c: Buffer) => {
+        stderrChunks.push(c);
+        if (req.onStderr) {
+          stderrLineBuf += c.toString('utf8');
+          const lines = stderrLineBuf.split('\n');
+          stderrLineBuf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (line.trim()) req.onStderr(line);
+          }
+        }
+      });
 
       const done = (status: SandboxJobStatus, exitCode: number | null) => {
         try {

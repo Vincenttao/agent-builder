@@ -1,33 +1,32 @@
-# Sandbox image for Agent Builder (runtime_and_sandbox §6).
+# Sandbox image for Agent Builder — P1 production target.
 #
-# P0 reference image. NOT built/tested in the current dev environment (Docker
-# is unavailable — see README "环境限制与降级"). The mock sandbox runner is the
-# documented fallback; this Dockerfile is the production target.
+# Includes: Python 3.11 + Node.js 20 + opencode + DeepSeek provider.
+# API key is NOT baked in — injected via DEEPSEEK_API_KEY env at runtime.
 
 FROM python:3.11-slim
 
-# git + build deps for any pure-python wheels; curl for Node setup.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git curl ca-certificates make build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js LTS — opencode run/serve is a Node tool (runtime_and_sandbox §10).
+# Node.js LTS — opencode is a Node tool.
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Python tooling. No OpenJiuwen SDK baked in until API inventory is complete
-# (architecture §6.3) — generated projects use the mock runtime by default.
 RUN pip install --no-cache-dir pytest
 
-# opencode: install per its official guide at build time on a connected host.
-# (Left out of the offline image by default — enable when OpenCodeEngine goes live.)
-# RUN npm install -g opencode
+# opencode: the code-generation engine (v1.14+).
+RUN npm install -g opencode@latest
 
-# Non-root user; default workspace is /workspace (mounted per-task, read-only fs).
+# Non-root user.
 RUN useradd --create-home --shell /bin/bash sandbox
+
+# Pre-configured DeepSeek provider (no API key — injected at runtime).
+COPY opencode-config.json /home/sandbox/.config/opencode/opencode.json
+RUN chown -R sandbox:sandbox /home/sandbox/.config
+
 WORKDIR /workspace
 USER sandbox
 
-# No secrets baked into the image (runtime_and_sandbox §6 constraint #1).
-CMD ["python", "--version"]
+CMD ["opencode", "--version"]

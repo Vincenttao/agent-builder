@@ -402,18 +402,17 @@ opencode run --format json .agent_builder/prompt.md
 3. 页面可以完成：输入 prompt -> 生成 -> 源码 -> 模拟运行 -> 导出。
 4. 通用 mock runtime 不再泄漏塔罗 / 售前 Demo 专用文案。
 
-### Phase 13：真实模型与本地开发体验
+### Phase 13：真实模型与本地开发体验（✅ 已完成）
 
 目标：让开发者可以清楚配置真实 LLM / OpenCode，也可以无密钥运行 mock 测试。
 
-先写测试：
-
-1. 缺少 `SPEC_LLM_API_KEY` 时，hybrid 模式下非示例 prompt 返回明确错误。
-2. mock parser 模式下不需要真实 key。
-3. `.env.example` 包含所有必要配置。
-4. README 含本地启动和 E2E 复现步骤。
-5. export filter 排除 `.agent_builder/`、`.opencode/`、`opencode.json`、任何 `*opencode*.json` 配置文件和 run logs。
-6. export zip 不包含 OpenCode prompt、OpenCode config、LLM provider config 或任何 secret-looking value。
+✅ 已完成项：
+1. `.env.example` 包含所有必要配置。
+2. README 含本地启动（Docker Compose 一键 + 裸机两种方式）和 E2E 复现步骤。
+3. export filter 排除 `.agent_builder/`、`.opencode/`、`opencode.json`、任何 `*opencode*.json` 配置文件和 run logs。
+4. export zip 不包含 OpenCode prompt、OpenCode config、LLM provider config 或任何 secret-looking value。
+5. **Docker Compose 一键启动**：`docker compose up --build`，沙箱镜像预装 opencode + DeepSeek provider。
+6. Docker sandbox runner 支持 `HOST_WORKSPACE_DIR` 路径翻译（docker-out-of-docker）。
 
 实现任务：
 

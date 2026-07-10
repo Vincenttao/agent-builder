@@ -1,0 +1,26 @@
+# API server Dockerfile — NestJS in Docker
+FROM node:22-slim
+
+WORKDIR /app
+
+# Copy monorepo root config
+COPY package.json package-lock.json* ./
+COPY packages/shared-contracts/package.json packages/shared-contracts/package.json
+COPY packages/shared-contracts/tsconfig.json packages/shared-contracts/tsconfig.json
+COPY apps/api/package.json apps/api/package.json
+COPY apps/api/tsconfig.json apps/api/tsconfig.json
+
+# Install deps
+RUN npm install --workspaces=false || npm install
+
+# Copy source
+COPY packages/shared-contracts/src packages/shared-contracts/src
+COPY apps/api/src apps/api/src
+
+# Build shared contracts
+RUN npm run build:contracts
+
+ENV PORT=3001
+EXPOSE 3001
+
+CMD ["node", "--env-file=apps/api/.env", "-r", "ts-node/register/transpile-only", "apps/api/src/main.ts"]

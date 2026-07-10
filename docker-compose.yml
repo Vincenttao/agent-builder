@@ -1,0 +1,40 @@
+services:
+  # ─── Build sandbox image with opencode ──────────────────────────
+  sandbox-image:
+    build:
+      context: sandbox/
+      dockerfile: Dockerfile
+    image: agent-builder-sandbox:latest
+    command: echo "sandbox image ready"
+
+  # ─── API server (NestJS :3001) ─────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "3001:3001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./workspace:/workspace
+    env_file:
+      - apps/api/.env
+    environment:
+      - WORKSPACE_DIR=/workspace
+      - HOST_WORKSPACE_DIR=${PWD}/workspace
+      - METADATA_DB_PATH=/workspace/metadata.db
+    depends_on:
+      sandbox-image:
+        condition: service_completed_successfully
+
+  # ─── Web frontend (Next.js :3000) ──────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+    depends_on:
+      - api

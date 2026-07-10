@@ -38,31 +38,29 @@ cd services/python-runner && pip install -e ".[dev]" && cd -   # 可选：安装
 
 ## 本地启动
 
-后端（NestJS，端口 3001）——两种启动方式：
+### 方式 1 — Docker Compose（推荐，一键启动）
 
 ```bash
-# 方式 1 — 纯 mock（CI/E2E 默认，无需密钥）：非示例 prompt 走 MockLlmSpecParser + TemplateEngine。
+# 确保 apps/api/.env 已配置（至少 SPEC_LLM_PROVIDER + DeepSeek key）
+docker compose up --build
+# API :3001 | Web :3000 | opencode 预装在 sandbox 镜像中
+```
+
+镜像包含：Python 3.11 + Node.js 20 + opencode + DeepSeek provider（oh-my-openagent 插件）。
+API 容器通过 Docker socket 自动使用 Docker sandbox（无需 MockSandboxRunner fallback）。
+
+### 方式 2 — 裸机启动（需要 opencode + Node.js + Python）
+
+后端（NestJS，端口 3001）：
+
+```bash
+# 纯 mock（CI/E2E 默认，无需密钥）：
 npm run dev:api
 
-# 方式 2 — 真实 LLM（需 apps/api/.env 配好 SPEC_LLM_* / DeepSeek key）：
-# 非示例 prompt 走真实的 OpenAiCompatibleSpecParser 调用 DeepSeek。
+# 真实 LLM + opencode（需 apps/api/.env 配好密钥）：
 npm run dev:api:llm
 # 健康检查：curl http://localhost:3001/health
 ```
-
-### OpenCode 模型配置
-
-真实 OpenCode 生成需要 opencode ≥ 1.14 并配置 DeepSeek provider（一次性）：
-
-```bash
-# 执行此命令，将 DeepSeek provider 写入 opencode 全局配置
-node -e "
-const fs=require('fs'); const p=require('path');
-const f=p.join(process.env.HOME,'.config/opencode/opencode.json');
-const c=JSON.parse(fs.readFileSync(f,'utf8'));
-c.provider={deepseek:{npm:'@ai-sdk/openai-compatible',name:'DeepSeek',options:{baseURL:'https://api.deepseek.com/v1'},models:{'deepseek-chat':{name:'DeepSeek Chat',modalities:{input:['text'],output:['text']},limit:{context:131072,output:8192}}}},...c.provider};
-fs.writeFileSync(f,JSON.stringify(c,null,2));
-"
 ```
 
 前端（Next.js，端口 3000）：
