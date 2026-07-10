@@ -3,10 +3,10 @@ import type { AgentSpec, WorkflowSpec } from '@agent-builder/shared-contracts';
 /**
  * Canonical Specs for the two PRD standard demo prompts (PRD §5.2).
  *
- * The deterministic parser returns these verbatim (keyword-matched) so the two
- * demos always produce stable Specs (P0 plan §6.4 checkpoint #1). Templates
- * consume only the Spec — the raw prompt is never concatenated into code
- * (P0 plan §6.5 note 3).
+ * Used as test fixtures and reference examples. All prompts now route through
+ * the LLM parser (the deterministic keyword-match path was removed in P2).
+ * Templates consume only the Spec — the raw prompt is never concatenated
+ * into code (P0 plan §6.5 note 3).
  */
 
 export const TAROT_AGENT_SPEC: AgentSpec = {
