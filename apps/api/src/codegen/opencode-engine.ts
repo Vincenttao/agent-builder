@@ -139,11 +139,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
 
     // Parse opencode stderr for meaningful progress events.
     // Raw log lines are filtered; only user-relevant messages are emitted.
+    this.logger.debug(`opencode sandbox starting (timeout: ${timeoutSeconds}s)`);
     const onLine = (stream: string) => (line: string) => {
       const msg = this.parseOpencodeLog(line);
       if (msg) {
         callbacks?.onEvent?.(EventType.Thought, msg, { stream, mock: false });
       }
+      this.logger.debug(`[opencode ${stream}] ${line.slice(0, 200)}`);
     };
 
     // Build version-appropriate opencode command.

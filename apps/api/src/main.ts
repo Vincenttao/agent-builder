@@ -5,7 +5,10 @@ import { AgentBuilderExceptionFilter } from './common/agent-builder-exception.fi
 const DEFAULT_PORT = 3001;
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: false,
+    logger: ['debug', 'log', 'warn', 'error', 'verbose'],
+  });
 
   // The Next.js dev server (3000) and production runtime call the API cross-origin.
   app.enableCors({ origin: true, credentials: true });
