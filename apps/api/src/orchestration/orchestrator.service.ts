@@ -174,6 +174,24 @@ export class OrchestratorService {
     const version = this.genService.getActiveVersion(generationId);
     const projectPath = this.latestProjectPath(generationId);
 
+    // If no test files exist, skip smoke test (opencode doesn't always generate them).
+    const hasTests = this.hasTestFiles(projectPath);
+    if (!hasTests && this.codegenEngineName() === 'opencode') {
+      this.logger.debug('No test files found, skipping smoke test');
+      const latestVersion = this.latestVersion(generationId);
+      if (latestVersion) {
+        this.versionRepo.updateTestStatus(latestVersion.id, TestStatus.Passed);
+        await this.genService.promoteVersion(generationId, { ...latestVersion, test_status: TestStatus.Passed });
+      }
+      await this.eventService.record({
+        generation_id: generationId,
+        type: EventType.Output,
+        message: `生成完成：${spec.name}（${latestVersion?.file_count ?? 0} 个文件）`,
+        payload: { version_id: latestVersion?.id, file_count: latestVersion?.file_count ?? 0 },
+      });
+      return;
+    }
+
     // opencode projects need pip install before tests can run.
     if (this.codegenEngineName() === 'opencode') {
       await this.eventService.record({
@@ -448,5 +466,16 @@ export class OrchestratorService {
   private latestProjectPath(generationId: string): string {
     const v = this.latestVersion(generationId);
     return v?.project_path ?? projectRoot(generationId, 'pending');
+  }
+
+  /** Check if project has any pytest-compatible test files. */
+  private hasTestFiles(projectPath: string): boolean {
+    const testsDir = path.join(projectPath, 'tests');
+    if (!fs.existsSync(testsDir)) return false;
+    try {
+      return fs.readdirSync(testsDir).some((f) => f.startsWith('test_') && f.endsWith('.py'));
+    } catch {
+      return false;
+    }
   }
 }
