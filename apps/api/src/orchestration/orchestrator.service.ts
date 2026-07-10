@@ -170,12 +170,12 @@ export class OrchestratorService {
 
   private async smokeTest(generationId: string, spec: AgentSpec | WorkflowSpec): Promise<void> {
     this.genService.transitionTo(generationId, GenerationStatus.Testing);
-    const testFile = isAgentSpec(spec) ? 'tests/test_agent_smoke.py' : 'tests/test_workflow_smoke.py';
+    // Run all Python test files that opencode generated (not hardcoded names).
     await this.eventService.record({
       generation_id: generationId,
       type: EventType.TestStarted,
-      message: `运行 smoke test：${testFile}`,
-      payload: { test_file: testFile },
+      message: '运行 smoke test',
+      payload: { test_dir: 'tests/' },
     });
 
     const version = this.genService.getActiveVersion(generationId);
@@ -186,7 +186,7 @@ export class OrchestratorService {
       generationId,
       versionId: version?.id ?? null,
       jobType: JobType.SmokeTest,
-      command: ['python', '-m', 'pytest', testFile, '-q'],
+      command: ['python', '-m', 'pytest', 'tests/', '-q'],
       workspacePath: projectPath,
       runtime: SandboxRuntime.Mock,
       timeoutSeconds: 90,
