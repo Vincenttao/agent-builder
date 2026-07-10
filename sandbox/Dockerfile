@@ -16,9 +16,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# oh-my-opencode v3 bundles opencode binary; v4 may need separate install.
-RUN npm install -g oh-my-opencode@3.12.3 && \
-    cp /root/.opencode/bin/opencode /usr/local/bin/opencode
+# Install opencode CLI binary. oh-my-opencode provides the agent plugin.
+# The standalone binary is the most reliable way to get opencode in Docker.
+RUN curl -fsSL https://github.com/opencode-ai/opencode/releases/latest/download/opencode-linux-x86_64 -o /usr/local/bin/opencode && \
+    chmod +x /usr/local/bin/opencode && \
+    npm install -g oh-my-opencode@latest
 
 # Non-root user for sandbox execution.
 RUN useradd --create-home --shell /bin/bash sandbox
