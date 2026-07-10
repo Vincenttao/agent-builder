@@ -134,9 +134,12 @@ export class RunService {
     try {
       parsed = JSON.parse(stdout) as RunnerResult;
     } catch {
-      throw new AgentBuilderError(ErrorCode.RunFailed, 'Python Runner 输出无法解析', {
-        stdout,
-      });
+      const preview = stdout.slice(0, 500) || '(空输出)';
+      throw new AgentBuilderError(
+        ErrorCode.RunFailed,
+        `无法运行生成的项目（${preview}）。如果项目刚生成，可能需要先 pip install 或修改源码后再试。`,
+        { stdout: preview },
+      );
     }
     return {
       status: parsed.status,

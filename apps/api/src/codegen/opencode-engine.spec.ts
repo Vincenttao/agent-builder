@@ -151,9 +151,12 @@ describe('OpenCodeEngine', () => {
       expect(runMock).toHaveBeenCalledTimes(1);
       const runReq = runMock.mock.calls[0][0];
       expect(runReq.jobType).toBe(JobType.OpencodeGeneration);
-      expect(runReq.command).toEqual([
-        'opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', 'deepseek/deepseek-chat', '在当前目录 /workspace 下，读取 .agent_builder/prompt.md 中的 Spec，生成完整的 Python 项目代码。要求：1）所有文件直接创建在当前目录，不要创建子项目目录；2）必须在 tests/ 目录下生成至少一个 test_*.py 测试文件；3）必须生成 setup.py 或 pyproject.toml 以便 pip install -e . 可用。',
-      ]);
+      expect(runReq.command[0]).toBe('opencode');
+      expect(runReq.command[1]).toBe('run');
+      expect(runReq.command).toContain('--dangerously-skip-permissions');
+      expect(runReq.command).toContain('--model');
+      expect(runReq.command).toContain('deepseek/deepseek-chat');
+      expect(runReq.command[runReq.command.length - 1]).toContain('README.md');
 
       delete process.env.OPENCODE_CLI_STYLE;
       expect(runReq.workspacePath).toBe(projectPath);
