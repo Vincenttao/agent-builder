@@ -16,8 +16,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# opencode: the code-generation engine (v1.14+).
-RUN npm install -g opencode@latest
+# opencode: the code-generation engine (v1.14+). Package: @opencode-ai/sdk.
+RUN npm install -g @opencode-ai/sdk@latest
 
 # Non-root user.
 RUN useradd --create-home --shell /bin/bash sandbox
