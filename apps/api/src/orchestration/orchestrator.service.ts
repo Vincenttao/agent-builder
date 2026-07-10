@@ -170,27 +170,28 @@ export class OrchestratorService {
 
   private async smokeTest(generationId: string, spec: AgentSpec | WorkflowSpec): Promise<void> {
     this.genService.transitionTo(generationId, GenerationStatus.Testing);
-    await this.eventService.record({
-      generation_id: generationId,
-      type: EventType.TestStarted,
-      message: '安装依赖…',
-      payload: { phase: 'install' },
-    });
 
     const version = this.genService.getActiveVersion(generationId);
     const projectPath = this.latestProjectPath(generationId);
 
-    // Step 1: install generated project so `import src.xxx` works.
-    await this.sandbox.run({
-      generationId,
-      versionId: version?.id ?? null,
-      jobType: JobType.SmokeTest,
-      command: ['python', '-m', 'pip', 'install', '-e', '.', '-q'],
-      workspacePath: projectPath,
-      timeoutSeconds: 60,
-    });
+    // opencode projects need pip install before tests can run.
+    if (this.codegenEngineName() === 'opencode') {
+      await this.eventService.record({
+        generation_id: generationId,
+        type: EventType.Thought,
+        message: '安装项目依赖…',
+        payload: { phase: 'install' },
+      });
+      await this.sandbox.run({
+        generationId,
+        versionId: version?.id ?? null,
+        jobType: JobType.SmokeTest,
+        command: ['python', '-m', 'pip', 'install', '-e', '.', '-q'],
+        workspacePath: projectPath,
+        timeoutSeconds: 60,
+      });
+    }
 
-    // Step 2: run smoke tests.
     await this.eventService.record({
       generation_id: generationId,
       type: EventType.TestStarted,
