@@ -275,17 +275,22 @@ export class OpenCodeEngine implements CodeGenerationEngine {
 
   /**
    * Build the opencode run command, adapting flags to the CLI style.
-   * v3 (oh-my-opencode, Docker):   run --model p/m --json "message"
-   * v1 (standalone opencode, host): run --dangerously-skip-permissions --model p/m --format json file
-   * Set OPENCODE_CLI_STYLE in .env: "v3" (default) or "v1".
+   * v0 (GitHub Release, Docker): opencode -p "prompt" -f json
+   * v1 (standalone, host):       opencode run --dangerously-skip-permissions --model p/m --format json file
+   * v3 (oh-my-opencode, npm):    opencode run --model p/m --json "message"
+   * Set OPENCODE_CLI_STYLE in .env.
    */
   private buildOpencodeCommand(modelArg: string): string[] {
-    const style = process.env.OPENCODE_CLI_STYLE ?? 'v3';
-    if (style === 'v1') {
-      return ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'];
+    const style = process.env.OPENCODE_CLI_STYLE ?? 'v0';
+    switch (style) {
+      case 'v1':
+        return ['opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', modelArg, '--format', 'json', '.agent_builder/prompt.md'];
+      case 'v3':
+        return ['opencode', 'run', '--model', modelArg, '--json', 'Read .agent_builder/prompt.md and generate the project'];
+      case 'v0':
+      default:
+        return ['opencode', '-p', 'Read .agent_builder/prompt.md and generate the project files', '-f', 'json'];
     }
-    // v3: read the prompt file and pass as message (Docker-compatible).
-    return ['opencode', 'run', '--model', modelArg, '--json', 'Read .agent_builder/prompt.md and generate the project'];
   }
 
   /** Collect configured opencode env vars to inject into the sandbox. */

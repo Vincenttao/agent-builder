@@ -16,11 +16,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# Install opencode via npm. The linux-x64 platform package provides the binary
-# as "oh-my-opencode". We symlink it to "opencode" for compatibility.
-# npm -g on Debian installs to /usr/lib/node_modules (not /usr/local/lib).
-RUN npm install -g oh-my-opencode-linux-x64@3.12.3 oh-my-opencode@3.12.3 && \
-    ln -s /usr/lib/node_modules/oh-my-opencode-linux-x64/bin/oh-my-opencode /usr/local/bin/opencode
+# opencode standalone binary from GitHub Releases (v0.0.55).
+# This is the headless codegen engine. oh-my-opencode is a separate interactive
+# plugin that wraps opencode — not needed for sandbox execution.
+RUN curl -fsSL -o /tmp/opencode.tar.gz \
+      "https://github.com/opencode-ai/opencode/releases/download/v0.0.55/opencode-linux-x86_64.tar.gz" && \
+    tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin/ opencode && \
+    rm /tmp/opencode.tar.gz
 
 # Non-root user for sandbox execution.
 RUN useradd --create-home --shell /bin/bash sandbox
