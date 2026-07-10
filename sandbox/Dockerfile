@@ -16,11 +16,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# oh-my-opencode bundles @opencode-ai/sdk and provisions the opencode CLI.
-# oh-my-opencode's postinstall downloads the binary to ~/.opencode/bin/.
-RUN npm install -g oh-my-opencode@latest && \
-    cp /root/.opencode/bin/opencode /usr/local/bin/opencode && \
-    chmod +x /usr/local/bin/opencode
+# oh-my-opencode v3 bundles opencode binary; v4 may need separate install.
+RUN npm install -g oh-my-opencode@3.12.3 && \
+    cp /root/.opencode/bin/opencode /usr/local/bin/opencode
 
 # Non-root user for sandbox execution.
 RUN useradd --create-home --shell /bin/bash sandbox
