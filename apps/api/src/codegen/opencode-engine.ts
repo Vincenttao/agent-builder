@@ -137,13 +137,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const opencodeProvider = process.env.OPENCODE_PROVIDER ?? 'deepseek';
     const modelArg = `${opencodeProvider}/${opencodeModel}`;
 
-    // Stream opencode stdout/stderr as SSE thought events for real-time progress.
+    // Parse opencode stderr for meaningful progress events.
+    // Raw log lines are filtered; only user-relevant messages are emitted.
     const onLine = (stream: string) => (line: string) => {
-      callbacks?.onEvent?.(
-        EventType.Thought,
-        `[opencode ${stream}] ${line.slice(0, 500)}`,
-        { stream, mock: false },
-      );
+      const msg = this.parseOpencodeLog(line);
+      if (msg) {
+        callbacks?.onEvent?.(EventType.Thought, msg, { stream, mock: false });
+      }
     };
 
     // Build version-appropriate opencode command.
@@ -246,6 +246,70 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     if (raw === 'openjiuwen_only') return NetworkPolicy.OpenjiuwenOnly;
     if (raw === 'controlled') return NetworkPolicy.Controlled;
     return NetworkPolicy.Controlled; // real mode requires a non-none policy
+  }
+
+  /**
+   * Parse one opencode log line and return a user-friendly message, or null
+   * if the line is noise (internal operations, config loading, etc.).
+   */
+  private parseOpencodeLog(line: string): string | null {
+    const get = (key: string): string | undefined => {
+      const m = line.match(new RegExp(`${key}=([^ ]+)`));
+      return m ? m[1] : undefined;
+    };
+    const message = get('message');
+    if (!message) return null;
+
+    // ── Noise filter ──────────────────────────────────────────────
+    const noise = /^(all LSPs|all formatters|init$|event connected|shell tool|booting location|project copy|loading|opencode\.json)/;
+    if (noise.test(message)) return null;
+
+    // ── Model calls ───────────────────────────────────────────────
+    if (message.startsWith('stream')) {
+      const model = get('modelID') ?? 'LLM';
+      return `调用 ${model} 生成代码…`;
+    }
+    if (message.startsWith('llm runtime')) {
+      return `模型就绪：${get('llm.provider') ?? ''}/${get('llm.model') ?? ''}`;
+    }
+
+    // ── Tool calls ────────────────────────────────────────────────
+    if (message.includes('tool_call') || message.includes('ToolCall')) {
+      const tool = get('tool') ?? get('toolName') ?? '';
+      if (tool === 'write_file' || tool === 'write' || tool === 'edit_file' || tool === 'edit') {
+        const p = get('path') ?? get('filePath') ?? '';
+        return p ? `写入 ${p}` : '写入文件…';
+      }
+      if (tool === 'bash' || tool === 'shell' || tool === 'command') {
+        const cmd = get('command') ?? get('cmd') ?? '';
+        return cmd ? `执行 ${cmd.slice(0, 80)}` : '执行命令…';
+      }
+      return tool ? `调用工具：${tool}` : '调用工具…';
+    }
+    if (message.includes('tool_result') || message.includes('ToolResult')) {
+      const tool = get('tool') ?? '';
+      if (tool === 'bash' || tool === 'shell') return null; // command outputs are noisy
+      return tool ? `工具完成：${tool}` : null;
+    }
+
+    // ── Progress ──────────────────────────────────────────────────
+    if (message.startsWith('loop')) {
+      const step = get('step');
+      return step === '0' ? '开始生成项目…' : `处理步骤 ${step}…`;
+    }
+    if (message.startsWith('created')) {
+      return '会话已创建';
+    }
+
+    // ── Completion / file writes ──────────────────────────────────
+    if (message.startsWith('done') || message === 'done') return '生成完成';
+    if (/^(write|Wrote) /.test(message)) return message;
+    if (message.startsWith('file written') || message.startsWith('File written')) {
+      const p = get('path') ?? get('file') ?? '';
+      return p ? `已写入 ${p}` : '已写入文件';
+    }
+
+    return null;
   }
 
   /** Scan opencode stderr for error patterns and return a user-facing message. */
