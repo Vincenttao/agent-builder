@@ -108,8 +108,10 @@ export class OrchestratorService {
 
     // Inject error context into the project for opencode to read on retry.
     if (lastError) {
+      const agentDir = path.join(projectPath, '.agent_builder');
+      fs.mkdirSync(agentDir, { recursive: true });
       fs.writeFileSync(
-        path.join(projectPath, '.agent_builder', 'fix.md'),
+        path.join(agentDir, 'fix.md'),
         `# 上一轮生成失败，请修复以下问题\n\n${lastError}\n\n请根据错误信息修改代码，确保所有测试通过。\n`,
         'utf8',
       );

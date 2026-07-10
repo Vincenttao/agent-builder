@@ -123,6 +123,8 @@ describe('OpenCodeEngine', () => {
         mock: true,
       });
 
+      process.env.OPENCODE_CLI_STYLE = 'v1'; // host opencode v1.x
+
       const engine = new OpenCodeEngine(templateEngine, sandbox, true);
       // opencode IS available on PATH in this env — mock it as available.
       jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(true);
@@ -149,10 +151,11 @@ describe('OpenCodeEngine', () => {
       expect(runMock).toHaveBeenCalledTimes(1);
       const runReq = runMock.mock.calls[0][0];
       expect(runReq.jobType).toBe(JobType.OpencodeGeneration);
-      // Default v0 style (GitHub Release binary)
       expect(runReq.command).toEqual([
-        'opencode', '-p', 'Read .agent_builder/prompt.md and generate the project files', '-f', 'json',
+        'opencode', 'run', '--dangerously-skip-permissions', '--print-logs', '--model', 'deepseek/deepseek-chat', '请读取 .agent_builder/prompt.md 并根据其中的 Spec 生成完整的项目代码',
       ]);
+
+      delete process.env.OPENCODE_CLI_STYLE;
       expect(runReq.workspacePath).toBe(projectPath);
       expect(runReq.networkPolicy).toBe(NetworkPolicy.Controlled);
 
