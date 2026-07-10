@@ -16,9 +16,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# opencode — install via official installer (https://opencode.ai).
-RUN curl -fsSL https://opencode.ai/install | bash
-ENV PATH="/root/.opencode/bin:${PATH}"
+# opencode — install via official installer, then copy to /usr/local/bin
+# so it survives tmpfs mounts on /root.
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    cp /root/.opencode/bin/opencode /usr/local/bin/opencode
 
 WORKDIR /workspace
 
