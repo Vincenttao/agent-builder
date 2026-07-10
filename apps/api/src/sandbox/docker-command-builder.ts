@@ -54,11 +54,12 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('--security-opt', 'no-new-privileges');
   args.push('--read-only');
   args.push('--tmpfs', '/tmp:rw,nosuid,nodev,size=256m');
-  // opencode needs writable dirs for cache/sessions. Don't tmpfs /root itself
-  // (it holds the installed binary at /root/.opencode/bin/opencode).
-  args.push('--tmpfs', '/root/.local:rw,nosuid,nodev,size=128m');
-  args.push('--tmpfs', '/root/.cache:rw,nosuid,nodev,size=128m');
-  args.push('--tmpfs', '/root/.bun:rw,nosuid,nodev,size=128m');
+  // opencode (Bun) writes to these dirs under $HOME ($HOME=/root).
+  args.push('--tmpfs', '/root/.local:rw,nosuid,nodev,size=64m');
+  args.push('--tmpfs', '/root/.cache:rw,nosuid,nodev,size=64m');
+  args.push('--tmpfs', '/root/.bun:rw,nosuid,nodev,size=64m');
+  args.push('--tmpfs', '/root/.config:rw,nosuid,nodev,size=64m');
+  args.push('--tmpfs', '/root/.opencode:rw,nosuid,nodev,size=64m');
 
   // #4 mount ONLY the current generation/version workspace; never the host
   // docker socket, never the host root (architecture §12 constraint #10).
