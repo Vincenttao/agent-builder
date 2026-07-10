@@ -17,9 +17,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN pip install --no-cache-dir pytest
 
 # Install opencode CLI binary from GitHub Releases.
-RUN curl -fsSL -o /usr/local/bin/opencode \
-      "https://github.com/opencode-ai/opencode/releases/download/v0.0.55/opencode-linux-x86_64" && \
-    chmod +x /usr/local/bin/opencode && \
+RUN curl -fsSL -o /tmp/opencode.tar.gz \
+      "https://github.com/opencode-ai/opencode/releases/download/v0.0.55/opencode-linux-x86_64.tar.gz" && \
+    tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin/ && \
+    rm /tmp/opencode.tar.gz && \
     npm install -g oh-my-opencode@latest
 
 # Non-root user for sandbox execution.
