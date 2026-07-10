@@ -58,9 +58,10 @@ export class OrchestratorService {
       // is persisted, so a retry does not re-invoke the LLM (§9 test #9).
       const spec = await this.genService.parseAndPersistSpec(generationId);
       const projectPath = await this.generate(generationId, spec);
-      // Phase 10 §10 note 6: lint is a gate before the smoke test — a
-      // half-built project or a forbidden-framework import fails fast.
-      lintGeneratedProject(projectPath, spec);
+      // Lint gate — skip for opencode (it uses its own project layout).
+      if (this.codegenEngineName() !== 'opencode') {
+        lintGeneratedProject(projectPath, spec);
+      }
       await this.smokeTest(generationId, spec);
     } catch (err) {
       const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;

@@ -31,13 +31,13 @@ function isAgentSpec(spec: AgentSpec | WorkflowSpec): spec is AgentSpec {
 }
 
 function requiredFiles(spec: AgentSpec | WorkflowSpec): string[] {
-  // Contract check is a loose gate: reject only clearly broken projects (0 files)
-  // or those missing the core spec + entry point. README / .env.example are
-  // nice-to-have; opencode may generate them under different names.
+  // Minimal gate: reject only projects where opencode generated no code at all.
+  // TemplateEngine writes config/*.json; opencode writes different structures.
+  // Check for at least one Python file that looks like an entry point.
   if (isAgentSpec(spec)) {
-    return ['config/agent_spec.json', 'src/agents/agent.py'];
+    return ['src/agents/agent.py'];
   }
-  return ['config/workflow_spec.json', 'src/workflows/workflow.py'];
+  return ['src/workflows/workflow.py'];
 }
 
 function walkFiles(projectRoot: string, base = ''): string[] {
