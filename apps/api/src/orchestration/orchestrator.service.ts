@@ -64,30 +64,30 @@ export class OrchestratorService {
         if (this.codegenEngineName() !== 'opencode') {
           lintGeneratedProject(projectPath, spec);
         }
-        await this.smokeTest(generationId, spec);
-        return; // success
+        const testResult = await this.smokeTest(generationId, spec);
+        // opencode mode: retry if smoke test failed, feeding output back
+        if (!testResult.passed && this.codegenEngineName() === 'opencode' && attempt < maxRetries) {
+          lastError = `【测试失败】\n${testResult.output}`;
+          this.logger.warn(`opencode auto-retry ${attempt + 1}/${maxRetries}`);
+          await this.eventService.record({
+            generation_id: generationId,
+            type: EventType.Thought,
+            message: `测试失败，自动修复中（${attempt + 1}/${maxRetries}）`,
+            payload: { attempt: attempt + 1, maxRetries },
+          });
+          continue; // retry loop
+        }
+        return; // success or out of retries (non-blocking for opencode)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;
-
-        // Only auto-retry for test/codegen failures in opencode mode
-        const retryable = this.codegenEngineName() === 'opencode' &&
-          (code === ErrorCode.TestFailed || code === ErrorCode.CodeGenerationFailed);
-
-        if (!retryable || attempt >= maxRetries) {
-          this.logger.warn(`pipeline failed for ${generationId}: ${code} — ${msg}`);
-          await this.genService.markFailed(generationId, code, msg);
-          return;
+        if (this.codegenEngineName() === 'opencode' && attempt < maxRetries) {
+          lastError = msg;
+          continue; // retry
         }
-
-        lastError = msg;
-        this.logger.warn(`opencode auto-retry ${attempt + 1}/${maxRetries}: ${msg.slice(0, 100)}`);
-        await this.eventService.record({
-          generation_id: generationId,
-          type: EventType.Thought,
-          message: `测试失败，自动修复中（${attempt + 1}/${maxRetries}）：${msg.slice(0, 200)}`,
-          payload: { attempt: attempt + 1, maxRetries, error: msg },
-        });
+        this.logger.warn(`pipeline failed for ${generationId}: ${code} — ${msg}`);
+        await this.genService.markFailed(generationId, code, msg);
+        return;
       }
     }
   }
@@ -168,15 +168,15 @@ export class OrchestratorService {
     return projectPath;
   }
 
-  private async smokeTest(generationId: string, spec: AgentSpec | WorkflowSpec): Promise<void> {
+  private async smokeTest(generationId: string, spec: AgentSpec | WorkflowSpec): Promise<{ passed: boolean; output: string }> {
     this.genService.transitionTo(generationId, GenerationStatus.Testing);
 
     const version = this.genService.getActiveVersion(generationId);
     const projectPath = this.latestProjectPath(generationId);
 
-    // If no test files exist, skip smoke test (opencode doesn't always generate them).
+    // If no test files exist, skip smoke test.
     const hasTests = this.hasTestFiles(projectPath);
-    if (!hasTests && this.codegenEngineName() === 'opencode') {
+    if (!hasTests) {
       this.logger.debug('No test files found, skipping smoke test');
       const latestVersion = this.latestVersion(generationId);
       if (latestVersion) {
@@ -189,17 +189,11 @@ export class OrchestratorService {
         message: `生成完成：${spec.name}（${latestVersion?.file_count ?? 0} 个文件）`,
         payload: { version_id: latestVersion?.id, file_count: latestVersion?.file_count ?? 0 },
       });
-      return;
+      return { passed: true, output: '' };
     }
 
     // opencode projects need pip install before tests can run.
     if (this.codegenEngineName() === 'opencode') {
-      await this.eventService.record({
-        generation_id: generationId,
-        type: EventType.Thought,
-        message: '安装项目依赖…',
-        payload: { phase: 'install' },
-      });
       await this.sandbox.run({
         generationId,
         versionId: version?.id ?? null,
@@ -233,6 +227,12 @@ export class OrchestratorService {
       this.versionRepo.updateTestStatus(latestVersion.id, passed ? TestStatus.Passed : TestStatus.Failed);
     }
 
+    // Capture test output for retry feedback.
+    let testOutput = '';
+    if (!passed) {
+      try { testOutput = fs.readFileSync(result.stdoutPath, 'utf8').slice(0, 2000); } catch { /* ok */ }
+    }
+
     await this.eventService.record({
       generation_id: generationId,
       type: EventType.TestFinished,
@@ -242,15 +242,12 @@ export class OrchestratorService {
     });
 
     if (!passed) {
-      // For opencode, smoke test failure is non-blocking — opencode validates
-      // code during generation. The generated project may need `pip install -e .`
-      // before tests can run, which is expected.
       if (this.codegenEngineName() === 'opencode') {
-        this.logger.warn(`opencode smoke test failed (exit ${result.exitCode}) — non-blocking`);
+        // Non-blocking but return output for retry feedback.
         await this.eventService.record({
           generation_id: generationId,
           type: EventType.Thought,
-          message: `smoke test 未通过（exit ${result.exitCode}），项目可能需要 pip install 后再运行`,
+          message: `测试未通过 (exit ${result.exitCode})`,
           payload: { exit_code: result.exitCode },
         });
       } else {
@@ -270,6 +267,8 @@ export class OrchestratorService {
         payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: result.mock },
       });
     }
+
+    return { passed, output: testOutput };
   }
 
   // ─── Phase 14: Repair ────────────────────────────────────────────
