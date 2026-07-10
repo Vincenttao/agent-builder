@@ -40,9 +40,9 @@ export function useGenerationEvents(generationId: string | null) {
         if (cancelled) return;
         setConnected(false);
         setReconnecting(true);
-        source.close();
-        // Browser EventSource auto-reconnects; we also nudge after a short delay.
-        setTimeout(() => !cancelled && open(), 2000);
+        // Let the browser's built-in EventSource reconnect handle it.
+        // Do NOT call source.close() + setTimeout(open) — that creates a
+        // double connection (D-003).
       };
       source.onmessage = (e) => handleMessage(e.data);
       // Named events (event: <type>) arrive on addEventListener.
@@ -76,8 +76,12 @@ export function useGenerationEvents(generationId: string | null) {
           if (prev.some((e) => e.id === evt.id)) return prev;
           return [...prev, evt].sort((a, b) => a.sequence - b.sequence);
         });
-        // Derive status from terminal events.
-        if (evt.type === 'output' || evt.type === 'test_finished') {
+        // Derive status from terminal events (D-017: also handle error events).
+        if (
+          evt.type === 'output' ||
+          evt.type === 'test_finished' ||
+          evt.type === 'error'
+        ) {
           // best-effort: refresh status from REST
           getGeneration(genId)
             .then((g) => !cancelled && setStatus(g.status as GenerationStatus))

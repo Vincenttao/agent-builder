@@ -52,10 +52,20 @@ export function isTerminalStatus(status: GenerationStatus): boolean {
  * A generation is allowed to move to `failed` from any state, but a `failed`
  * generation must never overwrite a previously `completed` version
  * (architecture §5.2, PRD FR-012). This helper encodes the legal transitions.
+ *
+ * P2 repair (D-001): `failed` and `completed` may transition back to `planning`
+ * so the orchestrator can re-run the pipeline.
  */
 export function canTransition(from: GenerationStatus, to: GenerationStatus): boolean {
   if (from === to) return true;
   if (to === GenerationStatus.Failed) return true;
+  // Repair flow: allow resetting a terminal generation back to planning.
+  if (
+    to === GenerationStatus.Planning &&
+    (from === GenerationStatus.Failed || from === GenerationStatus.Completed)
+  ) {
+    return true;
+  }
   const order = GENERATION_STATUSES as readonly string[];
   const fromIdx = order.indexOf(from);
   const toIdx = order.indexOf(to);

@@ -55,6 +55,27 @@ describe('file-service (Phase 6 §6.2 #6, Phase 8 security)', () => {
       it('readFileSafe rejects traversal', () => {
         expect(() => readFileSafe(root, '../../etc/passwd')).toThrow(PathSafetyError);
       });
+
+      // D-005: encoding variant traversal tests
+      it('rejects URL-encoded traversal (..%2F)', () => {
+        expect(() => assertSafePath(root, '..%2F..%2Fetc%2Fpasswd')).toThrow(PathSafetyError);
+      });
+
+      it('rejects double URL-encoded traversal (..%252F)', () => {
+        expect(() => assertSafePath(root, '..%252F..%252Fetc%252Fpasswd')).toThrow(PathSafetyError);
+      });
+
+      it('rejects null byte injection', () => {
+        expect(() => assertSafePath(root, 'src/agents/agent.py\x00.js')).toThrow(PathSafetyError);
+      });
+
+      it('rejects backslash traversal', () => {
+        expect(() => assertSafePath(root, '..\\..\\etc\\passwd')).toThrow(PathSafetyError);
+      });
+
+      it('rejects mixed slash traversal', () => {
+        expect(() => assertSafePath(root, '..\\../etc/passwd')).toThrow(PathSafetyError);
+      });
   });
 
   describe('isExportAllowed (export filter — runtime_and_sandbox §13)', () => {

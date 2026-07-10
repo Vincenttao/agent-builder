@@ -36,14 +36,20 @@ const STATUS_TONE: Record<string, string> = {
 export function GenerationWorkspace({ id }: { id: string }) {
   const { events, status, connected, reconnecting } = useGenerationEvents(id);
   const [gen, setGen] = useState<GenerationDto | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
   const [tab, setTab] = useState<'run' | 'source'>('run');
   const [tree, setTree] = useState<FileTreeNode[]>([]);
+  const [treeError, setTreeError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    getGeneration(id).then(setGen).catch(() => undefined);
+    let cancelled = false;
+    getGeneration(id)
+      .then((g) => { if (!cancelled) { setGen(g); setGenError(null); } })
+      .catch((e) => { if (!cancelled) setGenError((e as Error).message); });
+    return () => { cancelled = true; };
   }, [id]);
 
   // Refresh the file tree as generation events arrive. A single early fetch can
@@ -57,7 +63,11 @@ export function GenerationWorkspace({ id }: { id: string }) {
   }, 0);
   useEffect(() => {
     if (!showFiles) return;
-    getFileTree(id).then(setTree).catch(() => undefined);
+    let cancelled = false;
+    getFileTree(id)
+      .then((t) => { if (!cancelled) { setTree(t); setTreeError(null); } })
+      .catch((e) => { if (!cancelled) setTreeError((e as Error).message); });
+    return () => { cancelled = true; };
   }, [id, showFiles, status, tab, fileEventWatermark]);
 
   // Auto-open the default source file once the file tree is ready (P2 D5).
@@ -128,9 +138,21 @@ export function GenerationWorkspace({ id }: { id: string }) {
   const isCompleted = status === GenerationStatus.Completed;
   const isFailed = status === GenerationStatus.Failed;
   const isWorkflow = gen?.type === 'workflow';
+  const loadError = genError ?? treeError;
 
   return (
     <div className="flex h-screen flex-col bg-zinc-100 text-zinc-950">
+      {loadError && (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700" data-testid="load-error">
+          加载失败：{loadError}
+          <button
+            onClick={() => window.location.reload()}
+            className="ml-3 underline"
+          >
+            重试
+          </button>
+        </div>
+      )}
       <header className="flex h-14 items-center justify-between border-b border-zinc-200 bg-white px-4">
         <div className="flex min-w-0 items-center gap-3">
           <button

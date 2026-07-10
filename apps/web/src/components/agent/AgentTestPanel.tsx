@@ -54,6 +54,7 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
         <input
           className="control flex-1 rounded-md px-3 py-2 text-xs"
           placeholder="输入测试消息…"
+          aria-label="Agent 测试消息"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           data-testid="agent-message-input"

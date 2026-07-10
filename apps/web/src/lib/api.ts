@@ -11,7 +11,8 @@ import type {
 /** REST client for the Agent Builder backend (proxied via next.config rewrites). */
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const signal = init?.signal ?? AbortSignal.timeout(30_000);
+  const res = await fetch(url, { ...init, signal });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = (data as { message?: string }).message ?? `请求失败 (${res.status})`;

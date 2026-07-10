@@ -36,6 +36,8 @@ import { projectRoot } from '../common/workspace';
 @Injectable()
 export class OrchestratorService {
   private readonly logger = new Logger(OrchestratorService.name);
+  /** Per-generation in-flight pipeline promises (D-006 concurrency guard). */
+  private readonly activePipelines = new Map<string, Promise<void>>();
 
   constructor(
     private readonly genService: GenerationService,
@@ -49,17 +51,50 @@ export class OrchestratorService {
     private readonly specRepo: SpecRepository,
   ) {}
 
+  /** Run the pipeline, ensuring only one is active per generation (D-006). */
   async runPipeline(generationId: string): Promise<void> {
+    // If a pipeline is already running, chain onto it.
+    const existing = this.activePipelines.get(generationId);
+    if (existing) {
+      this.logger.warn(`pipeline already running for ${generationId}, chaining`);
+      return existing;
+    }
+
+    const promise = this.runPipelineInternal(generationId).finally(() => {
+      this.activePipelines.delete(generationId);
+    });
+    this.activePipelines.set(generationId, promise);
+    return promise;
+  }
+
+  private async runPipelineInternal(generationId: string): Promise<void> {
     const spec = await this.genService.parseAndPersistSpec(generationId);
     const maxRetries = parseInt(process.env.OPENCODE_MAX_RETRIES ?? '2', 10);
     let lastError = '';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Reset status for retry so transitions work correctly (D-007).
+      if (attempt > 0) {
+        this.genService.resetToPlanning(generationId);
+      }
+
       try {
         const projectPath = await this.generate(generationId, spec, lastError || undefined);
-        if (this.codegenEngineName() !== 'opencode') {
+        // Run lint gate for all engines, but only throw for non-opencode (D-008).
+        try {
           lintGeneratedProject(projectPath, spec);
+        } catch (lintErr) {
+          if (this.codegenEngineName() !== 'opencode') throw lintErr;
+          const lintMsg = lintErr instanceof Error ? lintErr.message : String(lintErr);
+          this.logger.warn(`opencode lint warning: ${lintMsg}`);
+          await this.eventService.record({
+            generation_id: generationId,
+            type: EventType.Thought,
+            message: `Lint 警告：${lintMsg}`,
+            payload: { lint_warning: true },
+          });
         }
+
         const testResult = await this.smokeTest(generationId, spec);
         // opencode mode: retry if smoke test failed, feeding output back
         if (!testResult.passed && this.codegenEngineName() === 'opencode' && attempt < maxRetries) {
@@ -73,11 +108,22 @@ export class OrchestratorService {
           });
           continue; // retry loop
         }
-        return; // success or out of retries (non-blocking for opencode)
+
+        // D-002: If out of retries and still failing, mark as failed.
+        if (!testResult.passed && this.codegenEngineName() === 'opencode') {
+          this.logger.warn(`opencode pipeline failed after ${maxRetries + 1} attempts`);
+          await this.genService.markFailed(
+            generationId,
+            ErrorCode.TestFailed,
+            `smoke test 未通过，已达最大重试次数（${maxRetries + 1}）`,
+          );
+        }
+        return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;
         if (this.codegenEngineName() === 'opencode' && attempt < maxRetries) {
+          this.logger.warn(`opencode auto-retry ${attempt + 1}/${maxRetries}: ${msg}`);
           lastError = msg;
           continue; // retry
         }

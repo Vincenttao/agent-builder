@@ -68,6 +68,7 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
         <textarea
           className="control flex-1 resize-none rounded-md px-3 py-2 text-xs leading-5"
           rows={2}
+          aria-label="Workflow 输入"
           value={doc}
           onChange={(e) => setDoc(e.target.value)}
           data-testid="workflow-input"

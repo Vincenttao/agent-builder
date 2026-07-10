@@ -92,11 +92,12 @@ export class SandboxService implements OnApplicationShutdown {
     });
 
     let result: SandboxRunResult;
+    const startTime = Date.now();
     try {
       result = await runner.run(req, job.id, logDir);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.logger.error(`sandbox run threw: ${msg}`);
+      this.logger.error(`sandbox run threw: ${msg}`, (e as Error).stack);
       result = {
         jobId: job.id,
         runtime: mock ? SandboxRuntime.Mock : runtime,
@@ -104,7 +105,7 @@ export class SandboxService implements OnApplicationShutdown {
         exitCode: null,
         stdoutPath: path.join(logDir, 'stdout.log'),
         stderrPath: path.join(logDir, 'stderr.log'),
-        durationMs: 0,
+        durationMs: Date.now() - startTime,
         mock,
       };
     }

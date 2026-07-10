@@ -30,12 +30,13 @@ export function TaskHistory() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
     listGenerations(filter || undefined, 50, 0)
-      .then(setGenerations)
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
+      .then((list) => { if (!cancelled) { setGenerations(list); setLoading(false); } })
+      .catch((e) => { if (!cancelled) { setError((e as Error).message); setLoading(false); } });
+    return () => { cancelled = true; };
   }, [filter]);
 
   return (

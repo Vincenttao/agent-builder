@@ -26,6 +26,7 @@ const EXPORT_EXCLUDE = [
   /^\.agent_builder(\/|$)/,
   /^\.opencode(\/|$)/,
   /[^/]*opencode[^/]*\.json$/i, // opencode.json, .opencode.json, *opencode*.json
+  /^[^/]*\.egg-info(\/|$)/, // pip editable install artifacts (D-020)
 ];
 
 export function isExportAllowed(relPath: string): boolean {
@@ -37,15 +38,37 @@ export function isExportAllowed(relPath: string): boolean {
 
 /** Assert `relPath` is a safe relative path inside `projectRoot`. */
 export function assertSafePath(projectRoot: string, relPath: string): string {
-  if (!relPath || path.isAbsolute(relPath) || relPath.includes('..')) {
+  // Null-byte injection: path may be truncated by OS calls after \x00.
+  if (!relPath || relPath.includes('\x00')) {
     throw new PathSafetyError(`非法文件路径：${relPath}`);
   }
-  const resolved = path.resolve(projectRoot, relPath);
+  // Decode URL-encoded sequences so ..%2F.. → ../.. before the `..` check.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(relPath);
+  } catch {
+    // Malformed percent-encoding — reject.
+    throw new PathSafetyError(`非法文件路径（编码错误）：${relPath}`);
+  }
+  // Reject absolute paths, `..` traversal (both raw and decoded), and
+  // backslash separators that could resolve to parent dirs on Windows.
+  if (
+    path.isAbsolute(relPath) ||
+    path.isAbsolute(decoded) ||
+    relPath.includes('..') ||
+    decoded.includes('..') ||
+    relPath.includes('\\') ||
+    decoded.includes('\\')
+  ) {
+    throw new PathSafetyError(`非法文件路径：${relPath}`);
+  }
+  // Resolve against the project root and verify containment.
+  const resolved = path.resolve(projectRoot, decoded);
   const root = path.resolve(projectRoot);
-  // resolved must be the root itself or within it.
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     throw new PathSafetyError(`文件路径越界：${relPath}`);
   }
+  // Return the resolved path for the caller; use decoded for correctness.
   return resolved;
 }
 

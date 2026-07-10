@@ -164,4 +164,34 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     expect(run.body.status).toBe('success');
     expect(run.body.events.length).toBeGreaterThan(0);
   });
+
+  // D-012: repair flow
+  it('#6 repair creates a new version and re-runs the pipeline', async () => {
+    const id = await createAndWait('塔罗占卜 Agent', 'agent');
+    const before = genService.getByIdOrThrow(id);
+    expect(before.status).toBe('completed');
+
+    const repair = await request(httpServer)
+      .post(`/api/generations/${id}/repair`)
+      .send({ instruction: '需要修复' })
+      .expect(201);
+    expect(repair.body.generation_id).toBe(id);
+    expect(repair.body.version_label).toBe('v2');
+    expect(repair.body.retry_index).toBe(1);
+
+    // Wait for the repair pipeline to complete.
+    let final: { status: string; active_version_id: string | null } | null = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const g = genService.getByIdOrThrow(id);
+      if (g.status === 'completed' || g.status === 'failed') {
+        final = { status: g.status, active_version_id: g.active_version_id };
+        break;
+      }
+    }
+    expect(final).not.toBeNull();
+    expect(final!.status).toBe('completed');
+    // The active version should have been updated to the repair version.
+    expect(final!.active_version_id).not.toBe(before.active_version_id);
+  });
 });

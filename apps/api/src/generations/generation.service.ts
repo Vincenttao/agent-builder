@@ -141,10 +141,22 @@ export class GenerationService {
   /** Lifecycle transition used by the orchestrator (architecture §11). */
   transitionTo(id: string, status: GenerationStatus): void {
     const gen = this.genRepo.getById(id);
-    if (!gen) return;
+    if (!gen) {
+      this.logger.warn(`transitionTo: generation ${id} not found`);
+      return;
+    }
     if (canTransition(gen.status as GenerationStatus, status)) {
       this.genRepo.updateStatus(id, status);
+    } else {
+      this.logger.warn(
+        `transitionTo: illegal transition ${gen.status} → ${status} for ${id}`,
+      );
     }
+  }
+
+  /** Force-reset a generation to Planning for retry loops (D-007). */
+  resetToPlanning(id: string): void {
+    this.genRepo.updateStatus(id, GenerationStatus.Planning);
   }
 
   /**

@@ -66,7 +66,10 @@ export class DockerSandboxRunner implements SandboxRunner {
     const hostDir = process.env.HOST_WORKSPACE_DIR;
     const containerDir = process.env.WORKSPACE_DIR;
     if (hostDir && containerDir && hostDir !== containerDir) {
-      hostWorkspace = req.workspacePath.replace(containerDir, hostDir);
+      // D-021: prefix-based path replacement (not string replace).
+      if (req.workspacePath.startsWith(containerDir)) {
+        hostWorkspace = hostDir + req.workspacePath.slice(containerDir.length);
+      }
     }
 
     const args = buildDockerArgs({
