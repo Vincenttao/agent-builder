@@ -184,11 +184,16 @@ export class OrchestratorService {
       engineName,
     );
 
+    const existingCount = this.genService.countVersions(generationId);
+    const versionLabel = `v${existingCount + 1}`;
+
     const version = this.versionRepo.create({
       id: versionId,
       generation_id: generationId,
-      version_label: `v1`,
-      summary: `feat: 生成 ${spec.name}`,
+      version_label: versionLabel,
+      summary: existingCount > 0
+        ? `repair: 自动修复 — ${spec.name}`
+        : `feat: 生成 ${spec.name}`,
       project_path: projectPath,
       file_count: result.files.length,
       test_status: TestStatus.Skipped,
@@ -319,37 +324,23 @@ export class OrchestratorService {
     const gen = this.genService.getByIdOrThrow(generationId);
     const existingCount = this.genService.countVersions(generationId);
     const maxRetries = parseInt(process.env.OPENCODE_MAX_RETRIES ?? '2', 10);
-    if (existingCount > maxRetries) {
+    if (existingCount >= maxRetries + 1) {
       throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, `已达到最大重试次数 (${maxRetries})，请修改 Spec 后重试`);
     }
 
-    // Reset status so runPipeline can transition
+    // Reset status so the pipeline can transition forward.
     this.genService.transitionTo(generationId, GenerationStatus.Planning);
 
-    const versionId = this.versionRepo.newId();
     const versionLabel = `v${existingCount + 1}`;
-    const lastVersion = this.versionRepo.listByGeneration(generationId)[0];
+    const retryIndex = existingCount;
 
-    // Create version row immediately so the pipeline has it
-    this.versionRepo.create({
-      id: versionId,
-      generation_id: generationId,
-      version_label: versionLabel,
-      summary: `repair: ${instruction ?? '自动修复'} — ${gen.title}`,
-      project_path: projectRoot(generationId, versionId),
-      file_count: 0,
-      test_status: TestStatus.Skipped,
-      mock_mode: true,
-      retry_of_version_id: lastVersion?.id ?? null,
-      retry_index: existingCount,
-    });
-
-    // Run the pipeline asynchronously (same pattern as create)
+    // The pipeline's generate() method creates the version with the correct
+    // label — no need to pre-create a version here (avoids orphan rows).
     void this.runPipeline(generationId).catch((e) => {
       this.logger.error(`repair pipeline error for ${generationId}: ${(e as Error).message}`);
     });
 
-    return { generation_id: generationId, version_id: versionId, version_label: versionLabel, retry_index: existingCount };
+    return { generation_id: generationId, version_id: '', version_label: versionLabel, retry_index: retryIndex };
   }
 
   // ─── Phase 15: Draft / Confirm ───────────────────────────────────
