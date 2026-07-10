@@ -46,11 +46,13 @@ export const ALLOWED_PREFIXES: readonly string[][] = [
   ['python', '-m', 'pytest'],
   ['python', 'src/main.py'],
   ['python', '-m', 'src.main'],
+  ['python', '-m', 'pip'],
   ['python', '-m', 'python_runner.cli'],
   ['python3', '--version'],
   ['python3', '-m', 'pytest'],
   ['python3', 'src/main.py'],
   ['python3', '-m', 'src.main'],
+  ['python3', '-m', 'pip'],
   ['python3', '-m', 'python_runner.cli'],
 ];
 

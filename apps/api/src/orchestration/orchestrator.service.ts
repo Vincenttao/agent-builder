@@ -170,17 +170,33 @@ export class OrchestratorService {
 
   private async smokeTest(generationId: string, spec: AgentSpec | WorkflowSpec): Promise<void> {
     this.genService.transitionTo(generationId, GenerationStatus.Testing);
-    // Run all Python test files that opencode generated (not hardcoded names).
+    await this.eventService.record({
+      generation_id: generationId,
+      type: EventType.TestStarted,
+      message: '安装依赖…',
+      payload: { phase: 'install' },
+    });
+
+    const version = this.genService.getActiveVersion(generationId);
+    const projectPath = this.latestProjectPath(generationId);
+
+    // Step 1: install generated project so `import src.xxx` works.
+    await this.sandbox.run({
+      generationId,
+      versionId: version?.id ?? null,
+      jobType: JobType.SmokeTest,
+      command: ['python', '-m', 'pip', 'install', '-e', '.', '-q'],
+      workspacePath: projectPath,
+      timeoutSeconds: 60,
+    });
+
+    // Step 2: run smoke tests.
     await this.eventService.record({
       generation_id: generationId,
       type: EventType.TestStarted,
       message: '运行 smoke test',
       payload: { test_dir: 'tests/' },
     });
-
-    const version = this.genService.getActiveVersion(generationId);
-    // Active version isn't set yet (we're still testing) — read the just-created version path.
-    const projectPath = this.latestProjectPath(generationId);
 
     const result = await this.sandbox.run({
       generationId,
