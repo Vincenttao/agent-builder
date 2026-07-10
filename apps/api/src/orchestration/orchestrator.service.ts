@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import fs from 'node:fs';
+import path from 'node:path';
 import type { AgentSpec, WorkflowSpec } from '@agent-builder/shared-contracts';
 import {
   GenerationStatus,
@@ -53,36 +54,66 @@ export class OrchestratorService {
   ) {}
 
   async runPipeline(generationId: string): Promise<void> {
-    try {
-      // Phase 9: parse runs in the async pipeline (never on the HTTP path) and
-      // is persisted, so a retry does not re-invoke the LLM (§9 test #9).
-      const spec = await this.genService.parseAndPersistSpec(generationId);
-      const projectPath = await this.generate(generationId, spec);
-      // Lint gate — skip for opencode (it uses its own project layout).
-      if (this.codegenEngineName() !== 'opencode') {
-        lintGeneratedProject(projectPath, spec);
+    const spec = await this.genService.parseAndPersistSpec(generationId);
+    const maxRetries = parseInt(process.env.OPENCODE_MAX_RETRIES ?? '2', 10);
+    let lastError = '';
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const projectPath = await this.generate(generationId, spec, lastError || undefined);
+        if (this.codegenEngineName() !== 'opencode') {
+          lintGeneratedProject(projectPath, spec);
+        }
+        await this.smokeTest(generationId, spec);
+        return; // success
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;
+
+        // Only auto-retry for test/codegen failures in opencode mode
+        const retryable = this.codegenEngineName() === 'opencode' &&
+          (code === ErrorCode.TestFailed || code === ErrorCode.CodeGenerationFailed);
+
+        if (!retryable || attempt >= maxRetries) {
+          this.logger.warn(`pipeline failed for ${generationId}: ${code} — ${msg}`);
+          await this.genService.markFailed(generationId, code, msg);
+          return;
+        }
+
+        lastError = msg;
+        this.logger.warn(`opencode auto-retry ${attempt + 1}/${maxRetries}: ${msg.slice(0, 100)}`);
+        await this.eventService.record({
+          generation_id: generationId,
+          type: EventType.Thought,
+          message: `测试失败，自动修复中（${attempt + 1}/${maxRetries}）：${msg.slice(0, 200)}`,
+          payload: { attempt: attempt + 1, maxRetries, error: msg },
+        });
       }
-      await this.smokeTest(generationId, spec);
-    } catch (err) {
-      const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`pipeline failed for ${generationId}: ${code} — ${message}`);
-      await this.genService.markFailed(generationId, code, message);
     }
   }
 
-  private async generate(generationId: string, spec: AgentSpec | WorkflowSpec): Promise<string> {
+  private async generate(generationId: string, spec: AgentSpec | WorkflowSpec, lastError?: string): Promise<string> {
     this.genService.transitionTo(generationId, GenerationStatus.Generating);
+    const prefix = lastError ? `[自动修复] ` : '';
     await this.eventService.record({
       generation_id: generationId,
       type: EventType.CommandStarted,
-      message: `开始生成代码：${spec.name}`,
-      payload: { phase: 'code_generation' },
+      message: `${prefix}开始生成代码：${spec.name}`,
+      payload: { phase: 'code_generation', repair: !!lastError },
     });
 
     const versionId = this.versionRepo.newId();
     const projectPath = projectRoot(generationId, versionId);
     fs.mkdirSync(projectPath, { recursive: true });
+
+    // Inject error context into the project for opencode to read on retry.
+    if (lastError) {
+      fs.writeFileSync(
+        path.join(projectPath, '.agent_builder', 'fix.md'),
+        `# 上一轮生成失败，请修复以下问题\n\n${lastError}\n\n请根据错误信息修改代码，确保所有测试通过。\n`,
+        'utf8',
+      );
+    }
 
     const engineName = this.codegenEngineName();
     const mock = engineName !== 'opencode' || process.env.OPENCODE_REQUIRE_REAL !== 'true';
