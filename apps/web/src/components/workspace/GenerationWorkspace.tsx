@@ -115,7 +115,7 @@ export function GenerationWorkspace({ id }: { id: string }) {
         </button>
       </header>
 
-      <div className="grid flex-1 grid-cols-[320px_1fr] grid-rows-[1fr_180px] overflow-hidden">
+      <div className="grid flex-1 grid-cols-[380px_1fr] grid-rows-[1fr_180px] overflow-hidden">
         {/* Left rail: timeline + summary */}
         <aside className="row-span-2 overflow-auto border-r border-slate-200 bg-white p-3" data-testid="left-rail">
           <GenerationTimeline events={events} />

@@ -23,7 +23,7 @@ describe('GenerationTimeline (Phase 7 §11.2 #3)', () => {
     expect(screen.getByTestId('timeline-empty')).toBeInTheDocument();
   });
 
-  it('renders plan, file, and test events in sequence', () => {
+  it('renders plan, file, and test events inline (no label column)', () => {
     const events = [
       ev({ id: '1', sequence: 1, type: EventType.PlanCreated, message: '已创建生成计划' }),
       ev({ id: '2', sequence: 2, type: EventType.FileCreated, message: '创建文件 src/agents/agent.py', payload: { path: 'src/agents/agent.py' } }),
@@ -33,18 +33,18 @@ describe('GenerationTimeline (Phase 7 §11.2 #3)', () => {
     render(<GenerationTimeline events={events} />);
     const items = screen.getAllByTestId('event-item');
     expect(items).toHaveLength(4);
-    expect(items[0]).toHaveTextContent('计划');
+    expect(items[0]).toHaveTextContent('已创建生成计划');
     expect(items[1]).toHaveTextContent('src/agents/agent.py');
-    expect(items[3]).toHaveTextContent('测试完成');
+    expect(items[3]).toHaveTextContent('smoke test 通过');
   });
 
-  it('renders sandbox and opencode event types', () => {
+  it('renders sandbox and opencode event types inline', () => {
     const events = [
       ev({ id: 's', sequence: 1, type: EventType.SandboxStarted, message: '沙箱启动' }),
-      ev({ id: 'o', sequence: 2, type: EventType.OpencodeFileChanged, message: 'OpenCode 写文件' }),
+      ev({ id: 'o', sequence: 2, type: EventType.OpencodeFileChanged, message: 'OpenCode 写入 README.md' }),
     ];
     render(<GenerationTimeline events={events} />);
     expect(screen.getAllByTestId('event-item')[0]).toHaveTextContent('沙箱启动');
-    expect(screen.getAllByTestId('event-item')[1]).toHaveTextContent('OpenCode 写文件');
+    expect(screen.getAllByTestId('event-item')[1]).toHaveTextContent('OpenCode 写入 README.md');
   });
 });
