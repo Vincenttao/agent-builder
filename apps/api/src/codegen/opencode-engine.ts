@@ -250,7 +250,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
 
   /**
    * Parse one opencode log line and return a user-friendly message, or null
-   * if the line is noise (internal operations, config loading, etc.).
+   * if the line is noise.
    */
   private parseOpencodeLog(line: string): string | null {
     const get = (key: string): string | undefined => {
@@ -260,56 +260,51 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const message = get('message');
     if (!message) return null;
 
-    // ── Noise filter ──────────────────────────────────────────────
-    const noise = /^(all LSPs|all formatters|init$|event connected|shell tool|booting location|project copy|loading|opencode\.json)/;
-    if (noise.test(message)) return null;
+    // ── Noise ──────────────────────────────────────────────────
+    if (/^(all LSPs|all formatters|init$|event connected|shell tool|booting|project copy|loading|opencode\.json)/.test(message)) return null;
 
-    // ── Model calls ───────────────────────────────────────────────
+    // ── File writes (key user-visible action) ───────────────────
+    // "← Write <path>" or "Wrote <path>" or "Wrote file successfully"
+    const arrowMatch = line.match(/[←↳→]\s*Write\s+(.+)/);
+    if (arrowMatch) return `创建 ${this.shortPath(arrowMatch[1])}`;
+    if (message.startsWith('Wrote file successfully') || message === 'Wrote file successfully') return '文件写入完成';
+    if (/formatted|formatting|touching file/.test(message)) {
+      const f = get('file') ?? '';
+      return f ? `格式化 ${this.shortPath(f)}` : null;
+    }
+
+    // ── Model calls ───────────────────────────────────────────
     if (message.startsWith('stream')) {
-      const model = get('modelID') ?? 'LLM';
-      return `调用 ${model} 生成代码…`;
+      const model = get('modelID') ?? '';
+      return model ? `LLM 调用中…（${model}）` : 'LLM 调用中…';
     }
-    if (message.startsWith('llm runtime')) {
-      return `模型就绪：${get('llm.provider') ?? ''}/${get('llm.model') ?? ''}`;
+    if (message.startsWith('llm runtime')) return null;
+
+    // ── Progress ──────────────────────────────────────────────
+    if (message.startsWith('loop')) return null; // too frequent, skip
+    if (message.startsWith('created')) return null; // skip session noise
+
+    // ── Errors / important ────────────────────────────────────
+    if (/error|Error|PermissionDenied|ENOENT|EACCES|failed/i.test(message)) {
+      return `⚠️ ${message.slice(0, 150)}`;
     }
 
-    // ── Tool calls ────────────────────────────────────────────────
-    if (message.includes('tool_call') || message.includes('ToolCall')) {
-      const tool = get('tool') ?? get('toolName') ?? '';
-      if (tool === 'write_file' || tool === 'write' || tool === 'edit_file' || tool === 'edit') {
-        const p = get('path') ?? get('filePath') ?? '';
-        return p ? `写入 ${p}` : '写入文件…';
-      }
-      if (tool === 'bash' || tool === 'shell' || tool === 'command') {
-        const cmd = get('command') ?? get('cmd') ?? '';
-        return cmd ? `执行 ${cmd.slice(0, 80)}` : '执行命令…';
-      }
-      return tool ? `调用工具：${tool}` : '调用工具…';
-    }
-    if (message.includes('tool_result') || message.includes('ToolResult')) {
-      const tool = get('tool') ?? '';
-      if (tool === 'bash' || tool === 'shell') return null; // command outputs are noisy
-      return tool ? `工具完成：${tool}` : null;
-    }
+    // ── Tool calls ────────────────────────────────────────────
+    if (/tool_call|ToolCall/.test(message)) return null; // too noisy
+    if (/tool_result|ToolResult/.test(message)) return null;
 
-    // ── Progress ──────────────────────────────────────────────────
-    if (message.startsWith('loop')) {
-      const step = get('step');
-      return step === '0' ? '开始生成项目…' : `处理步骤 ${step}…`;
-    }
-    if (message.startsWith('created')) {
-      return '会话已创建';
-    }
-
-    // ── Completion / file writes ──────────────────────────────────
+    // ── Completion ────────────────────────────────────────────
     if (message.startsWith('done') || message === 'done') return '生成完成';
-    if (/^(write|Wrote) /.test(message)) return message;
-    if (message.startsWith('file written') || message.startsWith('File written')) {
-      const p = get('path') ?? get('file') ?? '';
-      return p ? `已写入 ${p}` : '已写入文件';
-    }
+    if (message.startsWith('exiting loop')) return '生成结束，正在整理文件…';
+    if (message.startsWith('disposing instance')) return null;
 
     return null;
+  }
+
+  /** Shorten a path to just the last 2 segments for display. */
+  private shortPath(p: string): string {
+    const parts = p.split('/');
+    return parts.slice(-2).join('/');
   }
 
   /** Scan opencode stderr for error patterns and return a user-facing message. */
