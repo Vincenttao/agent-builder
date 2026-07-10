@@ -7,9 +7,9 @@ function Tree({ nodes, depth, onSelect, selectedPath }: {
   selectedPath: string | null;
 }) {
   return (
-    <ul>
+    <ul role={depth === 0 ? 'tree' : 'group'}>
       {nodes.map((n) => (
-        <li key={n.path}>
+        <li key={n.path} role="treeitem" aria-selected={selectedPath === n.path} aria-expanded={n.type === 'directory' ? true : undefined}>
           <button
             type="button"
             onClick={() => n.type === 'file' && onSelect(n.path)}
@@ -22,6 +22,7 @@ function Tree({ nodes, depth, onSelect, selectedPath }: {
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${n.type === 'directory' ? 'bg-amber-500' : 'bg-zinc-400'}`}
+              aria-hidden="true"
             />
             <span className="truncate">{n.name}</span>
           </button>

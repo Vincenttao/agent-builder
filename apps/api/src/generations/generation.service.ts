@@ -36,6 +36,8 @@ import {
 @Injectable()
 export class GenerationService {
   private readonly logger = new Logger(GenerationService.name);
+  /** D-022: in-flight parse promises to prevent concurrent LLM calls. */
+  private readonly activeParses = new Map<string, Promise<AgentSpec | WorkflowSpec>>();
 
   constructor(
     private readonly genRepo: GenerationRepository,
@@ -82,6 +84,20 @@ export class GenerationService {
     const existing = this.specRepo.getByGeneration(id);
     if (existing) return existing.spec;
 
+    // D-022: prevent duplicate LLM calls when called concurrently.
+    const inflight = this.activeParses.get(id);
+    if (inflight) return inflight;
+
+    const promise = this._doParseAndPersist(id);
+    this.activeParses.set(id, promise);
+    try {
+      return await promise;
+    } finally {
+      this.activeParses.delete(id);
+    }
+  }
+
+  private async _doParseAndPersist(id: string): Promise<AgentSpec | WorkflowSpec> {
     const gen = this.genRepo.getById(id);
     if (!gen) {
       throw new AgentBuilderError(ErrorCode.PromptParseFailed, `生成任务 ${id} 不存在`);

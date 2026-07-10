@@ -327,7 +327,7 @@ describe('OpenCodeEngine', () => {
       expect(build()).toEqual({});
     });
 
-    it('propagates OPENAI_API_KEY and provider-specific DEEPSEEK_API_KEY', () => {
+    it('propagates provider-specific DEEPSEEK_API_KEY (no OPENAI_API_KEY fallback, D-016)', () => {
       process.env.OPENCODE_API_KEY = 'sk-test';
       process.env.OPENCODE_MODEL = 'gpt-4';
       process.env.OPENCODE_PROVIDER = 'deepseek';
@@ -338,7 +338,6 @@ describe('OpenCodeEngine', () => {
         OPENCODE_MODEL: 'gpt-4',
         OPENCODE_PROVIDER: 'deepseek',
         OPENCODE_BASE_URL: 'https://api.deepseek.com/v1',
-        OPENAI_API_KEY: 'sk-test',
         DEEPSEEK_API_KEY: 'sk-test',
         DEEPSEEK_BASE_URL: 'https://api.deepseek.com/v1',
       });

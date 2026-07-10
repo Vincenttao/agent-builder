@@ -76,6 +76,60 @@ export class SpecValidatorService {
       }
     }
 
+    // D-015: detect cycles using DFS.
+    const adj = new Map<string, string[]>();
+    for (const n of spec.nodes) adj.set(n.id, []);
+    for (const e of spec.edges) adj.get(e.from)?.push(e.to);
+
+    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const color = new Map<string, number>();
+    for (const n of spec.nodes) color.set(n.id, WHITE);
+
+    const hasCycle = (function dfs(nodeId: string): boolean {
+      color.set(nodeId, GRAY);
+      for (const next of adj.get(nodeId) ?? []) {
+        const c = color.get(next) ?? WHITE;
+        if (c === GRAY) return true;
+        if (c === WHITE && dfs(next)) return true;
+      }
+      color.set(nodeId, BLACK);
+      return false;
+    })(
+      spec.nodes.find((n) => n.type === 'start')?.id ??
+        spec.nodes[0]?.id ??
+        '',
+    );
+
+    // Also check any unreachable nodes for cycles.
+    if (!hasCycle) {
+      for (const n of spec.nodes) {
+        if (color.get(n.id) === WHITE) {
+          if ((function dfs2(id: string): boolean {
+            color.set(id, GRAY);
+            for (const next of adj.get(id) ?? []) {
+              const c = color.get(next) ?? WHITE;
+              if (c === GRAY) return true;
+              if (c === WHITE && dfs2(next)) return true;
+            }
+            color.set(id, BLACK);
+            return false;
+          })(n.id)) {
+            throw new AgentBuilderError(
+              ErrorCode.SpecValidationFailed,
+              'Workflow 包含循环边（cycle detected）',
+            );
+          }
+        }
+      }
+    }
+
+    if (hasCycle) {
+      throw new AgentBuilderError(
+        ErrorCode.SpecValidationFailed,
+        'Workflow 包含循环边（cycle detected）',
+      );
+    }
+
     const businessNodes = spec.nodes.filter(
       (n) => n.type !== 'start' && n.type !== 'end',
     ).length;

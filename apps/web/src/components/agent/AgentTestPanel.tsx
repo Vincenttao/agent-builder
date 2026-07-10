@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { agentRun } from '@/lib/api';
-import type { RunnerResult } from '@agent-builder/shared-contracts';
+import { useEffect, useState } from 'react';
+import { agentRun, getGeneration } from '@/lib/api';
+import type { RunnerResult, GenerationDto } from '@agent-builder/shared-contracts';
 
 /**
  * Agent effect test bench (PRD FR-007, §12.3). Sends a message and shows the
- * mock reply + recorded tool calls.
+ * mock reply + recorded tool calls. D-023: shows agent name and mock status.
  */
 export function AgentTestPanel({ generationId }: { generationId: string }) {
   const [message, setMessage] = useState('');
@@ -14,6 +14,12 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
   const [toolCalls, setToolCalls] = useState<Record<string, unknown>[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gen, setGen] = useState<GenerationDto | null>(null);
+  const [runCount, setRunCount] = useState(0);
+
+  useEffect(() => {
+    getGeneration(generationId).then(setGen).catch(() => undefined);
+  }, [generationId]);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -24,6 +30,7 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
       const result: RunnerResult = await agentRun(generationId, message.trim());
       setReply((result.output as { reply?: string } | null)?.reply ?? '(无回复)');
       setToolCalls(result.events ?? []);
+      setRunCount((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : '运行失败');
     } finally {
@@ -43,11 +50,20 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
       <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
         <div>
           <p className="section-label">Run Bench</p>
-          <h2 className="mt-1 text-sm font-semibold text-zinc-950">Agent 效果测试</h2>
+          <h2 className="mt-1 text-sm font-semibold text-zinc-950">
+            {gen?.title ?? 'Agent 效果测试'}
+          </h2>
         </div>
-        <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
-          Interactive
-        </span>
+        <div className="flex items-center gap-2">
+          {runCount > 0 && (
+            <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
+              已运行 {runCount} 次
+            </span>
+          )}
+          <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
+            {gen?.codegen_engine === 'opencode' ? 'OpenCode' : 'Template'}
+          </span>
+        </div>
       </div>
 
       <form onSubmit={send} className="flex gap-2">

@@ -367,14 +367,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       const val = process.env[key];
       if (val) map[key] = val;
     }
-    // The AI SDK derives env var name from provider ID (e.g. "deepseek" → DEEPSEEK_API_KEY).
-    // Also set OPENAI_API_KEY as a generic fallback.
-    if (map['OPENCODE_API_KEY']) {
-      map['OPENAI_API_KEY'] = map['OPENCODE_API_KEY'];
-      if (map['OPENCODE_PROVIDER']) {
-        const upper = map['OPENCODE_PROVIDER'].toUpperCase();
-        map[`${upper}_API_KEY`] = map['OPENCODE_API_KEY'];
-        map[`${upper}_BASE_URL`] = map['OPENCODE_BASE_URL'] ?? 'https://api.deepseek.com/v1';
+    // D-016: only inject the provider-specific key (e.g. DEEPSEEK_API_KEY).
+    // Remove OPENAI_API_KEY fallback to minimize secret exposure surface.
+    if (map['OPENCODE_API_KEY'] && map['OPENCODE_PROVIDER']) {
+      const upper = map['OPENCODE_PROVIDER'].toUpperCase();
+      map[`${upper}_API_KEY`] = map['OPENCODE_API_KEY'];
+      if (map['OPENCODE_BASE_URL']) {
+        map[`${upper}_BASE_URL`] = map['OPENCODE_BASE_URL'];
       }
     }
     return map;
