@@ -16,13 +16,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# opencode: the code-generation engine (v1.14+). Package: @opencode-ai/sdk.
-RUN npm install -g @opencode-ai/sdk@latest
+# oh-my-opencode bundles @opencode-ai/sdk and provisions the opencode CLI.
+RUN npm install -g oh-my-opencode@latest
 
-# Non-root user.
+# Non-root user for sandbox execution.
 RUN useradd --create-home --shell /bin/bash sandbox
 
+# Make opencode available to the sandbox user (oh-my-opencode installs to
+# /root/.opencode/bin when run as root).
+ENV PATH="/root/.opencode/bin:${PATH}"
+
 # Pre-configured DeepSeek provider (no API key — injected at runtime).
+RUN mkdir -p /home/sandbox/.config/opencode
 COPY opencode-config.json /home/sandbox/.config/opencode/opencode.json
 RUN chown -R sandbox:sandbox /home/sandbox/.config
 
