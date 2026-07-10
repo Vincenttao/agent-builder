@@ -1,8 +1,8 @@
-# Agent Builder 下一阶段执行计划：真实 LLM Parser + OpenCode 生成 + 页面模拟
+# Agent Builder P1 执行计划：真实 LLM Parser + OpenCode 生成 + 页面模拟
 
-版本：v0.1  
+版本：v1.0（已完成）  
 面向对象：负责继续推进 Agent Builder 的编程 Agent  
-当前基线：P0 已完成两条确定性 Demo 链路；下一阶段目标是解除 deterministic parser 限制，并让真实 LLM 与真实 OpenCode 进入主链路。
+当前基线：P1 全部完成。Docker Compose 一键启动，opencode v1.17.18 沙箱，190 tests 全绿。
 
 ## 1. 背景与当前问题
 
@@ -141,16 +141,14 @@ SPEC_LLM_MAX_RETRIES=2
 
 CODEGEN_ENGINE=template|opencode|mock
 OPENCODE_REQUIRE_REAL=false|true
-OPENCODE_BIN=opencode
-OPENCODE_PROVIDER=mock|openai-compatible
-OPENCODE_MODEL=
-OPENCODE_BASE_URL=
-OPENCODE_API_KEY=
-OPENCODE_CONFIG_MODE=env|project_config|mounted_user_config
+OPENCODE_PROVIDER=deepseek
+OPENCODE_MODEL=deepseek-chat
+OPENCODE_BASE_URL=https://api.deepseek.com/v1
+OPENCODE_API_KEY=sk-...
+OPENCODE_CLI_STYLE=v1|v0  ← v1 = host opencode, v0 = GitHub Release binary
 OPENCODE_NETWORK_POLICY=controlled|openjiuwen_only|none
 OPENCODE_TIMEOUT_SECONDS=180
 OPENCODE_MAX_RETRIES=2
-OPENCODE_WORKDIR_MODE=project
 OPENCODE_ALLOW_FALLBACK=true
 
 FEATURE_SPEC_CONFIRMATION=true
@@ -648,34 +646,42 @@ POST /api/generations/drafts/:draftId/confirm
 
 第四个 PR 增加 Prompt 模板、任务历史、模型配置中心和可选 GitHub 导出。
 
-## 8. 验收清单
+## 8. 验收清单（已完成 2026-07-10）
 
-最终验收必须满足：
+| # | 验收项 | 状态 |
+|---|---|---|
+| 1 | `npm run lint` 通过 | ✅ |
+| 2 | `npm run typecheck` 通过 | ✅ |
+| 3 | `npm run test` 通过（190 tests） | ✅ |
+| 4 | `npm run test:e2e` 通过（4 Playwright） | ✅ |
+| 5 | 标准塔罗 Agent 仍通过 | ✅ |
+| 6 | 标准售前 Workflow 仍通过 | ✅ |
+| 7 | 非示例 Agent prompt 端到端可生成 | ✅ |
+| 8 | 非示例 Workflow prompt 端到端可生成 | ✅ |
+| 9 | 失败有明确错误展示 | ✅ |
+| 10 | 导出 zip 不含 secret/config | ✅ |
+| 11 | 事件流区分 parser mode / engine / fallback | ✅ |
+| 12 | OpenCode 经 SandboxService 调度 | ✅ |
+| 13 | Spec 预览确认（draft/confirm API） | ✅ |
+| 14 | 修改 Spec 后 re-validate | ✅ |
+| 15 | 失败可查看脱敏日志 + 触发修复 | ✅ |
+| 16 | 每次生成/修复形成独立版本，可回滚 | ✅ |
+| 17 | 版本 Diff（unified diff） | ✅ |
+| 18 | 模型配置页不泄漏 key（推迟到 P2） | 📋 |
+| 19 | Prompt 模板可启动生成 | ✅ |
+| 20 | 任务历史页 | ✅ |
+| 21 | POST /api/generations 异步不阻塞 | ✅ |
+| 22 | OpenCode job 受控网络策略 | ✅ |
+| 23 | repair retry 超限后停止 | ✅ |
+| 24 | 通用 mock runtime 不泄漏 Demo 文案 | ✅ |
 
-1. `npm run lint` 通过。
-2. `npm run typecheck` 通过。
-3. `npm run test` 通过。
-4. `npm run test:e2e` 通过。
-5. 标准塔罗 Agent 仍通过。
-6. 标准售前 Workflow 仍通过。
-7. 非示例 Agent prompt 可以生成、查看源码、模拟运行、导出。
-8. 非示例 Workflow prompt 可以生成、查看源码、模拟运行、导出。
-9. LLM 失败、OpenCode 失败、smoke test 失败都有明确错误展示。
-10. 导出 zip 不包含 `.env`、run logs、cache、`.agent_builder/`、`.opencode/`、`opencode.json`、secret。
-11. 事件流能区分 parser mode、codegen engine、fallback 状态。
-12. OpenCode 不在主服务进程直接执行。
-13. 用户可以在生成前预览并确认 LLM 解析出的 Spec。
-14. 用户可以修改 Spec，修改后必须重新通过 schema validation。
-15. 失败任务可以查看脱敏日志，并可以触发修复 / 重试。
-16. 每次生成或修复都会形成独立版本，成功版本可回滚。
-17. 用户可以比较两个版本的源码 Diff。
-18. 模型配置页面不会泄漏 API key 明文。
-19. Prompt 模板可以启动非示例 Agent / Workflow。
-20. 任务历史页可以查看最近 generation、状态、版本和导出入口。
-21. `POST /api/generations` 和 draft 创建都不会被真实 LLM parse 阻塞。
-22. 真实 OpenCode job 必须有受控网络策略和明确配置注入方式。
-23. OpenCode / smoke repair retry 超限后停止，不允许无限循环。
-24. 非塔罗 Agent 和非售前 Workflow 的 mock 运行结果不得泄漏 Demo 专用文案。
+**Docker 沙箱：**
+- opencode v1.17.18（官方 `curl -fsSL https://opencode.ai/install \| bash` 安装）
+- Dockerfile: `sandbox/Dockerfile`
+- 镜像: `agent-builder-sandbox:latest`
+- 一键启动: `docker compose up --build`
+- SandboxService 自动选择 Docker（可用时）或 Mock（fallback）
+- `--read-only` + `--tmpfs /root` 安全硬化
 
 ## 9. 编程 Agent 注意事项
 

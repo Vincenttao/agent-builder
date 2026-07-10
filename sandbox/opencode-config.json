@@ -1,5 +1,4 @@
 {
-  "$schema": "https://opencode.ai/config.json",
   "provider": {
     "deepseek": {
       "npm": "@ai-sdk/openai-compatible",
@@ -22,7 +21,6 @@
       }
     }
   },
-  "plugin": [
-    "oh-my-openagent@latest"
-  ]
+  "model": "deepseek/deepseek-chat",
+  "agent": "coder"
 }

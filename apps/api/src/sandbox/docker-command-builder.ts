@@ -54,6 +54,7 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('--security-opt', 'no-new-privileges');
   args.push('--read-only');
   args.push('--tmpfs', '/tmp:rw,nosuid,nodev,size=256m');
+  args.push('--tmpfs', '/root:rw,nosuid,nodev,size=256m');
 
   // #4 mount ONLY the current generation/version workspace; never the host
   // docker socket, never the host root (architecture §12 constraint #10).
