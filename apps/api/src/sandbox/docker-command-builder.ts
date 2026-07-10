@@ -33,7 +33,7 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   const limits = { ...DEFAULT_RESOURCE_LIMITS, ...input.resourceLimits };
   const network = input.networkPolicy ?? NetworkPolicy.None;
 
-  const args: string[] = [bin, 'run', '--rm'];
+  const args: string[] = [bin, 'run', '--rm', '--init'];
 
   // gVisor runtime flag (P0+ target — architecture §12).
   if (input.runtime === SandboxRuntime.Gvisor) {

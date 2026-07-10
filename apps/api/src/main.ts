@@ -9,6 +9,7 @@ async function bootstrap(): Promise<void> {
     bufferLogs: false,
     logger: ['debug', 'log', 'warn', 'error', 'verbose'],
   });
+  app.enableShutdownHooks();
 
   // The Next.js dev server (3000) and production runtime call the API cross-origin.
   app.enableCors({ origin: true, credentials: true });

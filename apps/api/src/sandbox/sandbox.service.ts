@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, OnApplicationShutdown } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SandboxRuntime, NetworkPolicy, EventType } from '@agent-builder/shared-contracts';
@@ -22,7 +22,7 @@ export const RUNS_DIR_TOKEN = 'RUNS_DIR';
  * a sandbox job (architecture §5.7 constraint #6).
  */
 @Injectable()
-export class SandboxService {
+export class SandboxService implements OnApplicationShutdown {
   private readonly logger = new Logger(SandboxService.name);
 
   constructor(
@@ -130,5 +130,11 @@ export class SandboxService {
     });
 
     return result;
+  }
+
+  /** Kill all running sandbox containers on server shutdown. */
+  async onApplicationShutdown(): Promise<void> {
+    this.logger.log('Shutting down sandbox containers…');
+    await this.dockerRunner.cleanup();
   }
 }

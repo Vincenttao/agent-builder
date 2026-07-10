@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SandboxRuntime, SandboxJobStatus } from '@agent-builder/shared-contracts';
@@ -35,9 +35,18 @@ function runtimeWorks(bin: string): boolean {
 export class DockerSandboxRunner implements SandboxRunner {
   private readonly logger = new Logger(DockerSandboxRunner.name);
   readonly runtime: SandboxRuntime = SandboxRuntime.Docker;
+  private runningProcesses: ChildProcess[] = [];
 
   isAvailable(): boolean {
     return runtimeWorks('docker') || runtimeWorks('podman');
+  }
+
+  /** Kill all spawned Docker containers on shutdown. */
+  async cleanup(): Promise<void> {
+    for (const child of this.runningProcesses) {
+      try { child.kill('SIGTERM'); } catch { /* already dead */ }
+    }
+    this.runningProcesses = [];
   }
 
   async run(
@@ -75,6 +84,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: (req.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
       });
+      this.runningProcesses.push(child);
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
       let stdoutLineBuf = '';
@@ -127,6 +137,7 @@ export class DockerSandboxRunner implements SandboxRunner {
         done(SandboxJobStatus.Failed, null);
       });
       child.on('close', (code, signal) => {
+        this.runningProcesses = this.runningProcesses.filter((p) => p !== child);
         if (signal === 'SIGTERM' || signal === 'SIGKILL') {
           done(SandboxJobStatus.Timeout, null);
         } else {
