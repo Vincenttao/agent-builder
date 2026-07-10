@@ -11,7 +11,7 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/api/tsconfig.json apps/api/tsconfig.json
 
 # Install deps
-RUN npm install --workspaces=false || npm install
+RUN npm install
 
 # Copy source
 COPY packages/shared-contracts/src packages/shared-contracts/src
