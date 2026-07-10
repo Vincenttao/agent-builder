@@ -16,9 +16,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest
 
-# Install opencode CLI binary. oh-my-opencode provides the agent plugin.
-# The standalone binary is the most reliable way to get opencode in Docker.
-RUN curl -fsSL https://github.com/opencode-ai/opencode/releases/latest/download/opencode-linux-x86_64 -o /usr/local/bin/opencode && \
+# Install opencode CLI binary from GitHub Releases.
+RUN curl -fsSL -o /usr/local/bin/opencode \
+      "https://github.com/opencode-ai/opencode/releases/download/v0.0.55/opencode-linux-x86_64" && \
     chmod +x /usr/local/bin/opencode && \
     npm install -g oh-my-opencode@latest
 
