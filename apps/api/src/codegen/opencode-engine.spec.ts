@@ -156,7 +156,9 @@ describe('OpenCodeEngine', () => {
       expect(runReq.command).toContain('--dangerously-skip-permissions');
       expect(runReq.command).toContain('--model');
       expect(runReq.command).toContain('deepseek/deepseek-chat');
-      expect(runReq.command[runReq.command.length - 1]).toContain('README.md');
+      // P3-002: command now references the prompt file, not inline constraints.
+      const lastArg = runReq.command[runReq.command.length - 1];
+      expect(lastArg).toContain('.agent_builder/prompt.md');
 
       delete process.env.OPENCODE_CLI_STYLE;
       expect(runReq.workspacePath).toBe(projectPath);

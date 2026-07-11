@@ -40,6 +40,18 @@ describe('command-allowlist (Phase 3 §7.2)', () => {
       expect(isCommandAllowed(['python', '-m', 'pytest', '../../etc/passwd']).ok).toBe(false);
     });
 
+    // P3-001: regression — prompt text with ... must not trigger path-escape.
+    it('allows opencode with prompt containing ellipsis and model path', () => {
+      const cmd = ['opencode', 'run', '--model', 'deepseek/deepseek-chat',
+        'Read .agent_builder/prompt.md and generate'];
+      expect(isCommandAllowed(cmd).ok).toBe(true);
+    });
+
+    it('still rejects real path traversal with ../ inside longer text', () => {
+      expect(isCommandAllowed(['python', 'src/../../etc/passwd']).ok).toBe(false);
+      expect(isCommandAllowed(['opencode', 'run', '../secret']).ok).toBe(false);
+    });
+
     it('forbids empty command', () => {
       expect(isCommandAllowed([]).ok).toBe(false);
     });

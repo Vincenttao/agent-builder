@@ -315,12 +315,13 @@ export class OrchestratorService {
     }
 
     if (latestVersion) {
-      const testOk = passed || this.codegenEngineName() === 'opencode';
+      // P3-004: only promote versions with passing tests.
+      const testOk = passed;
       await this.genService.promoteVersion(generationId, { ...latestVersion, test_status: testOk ? TestStatus.Passed : TestStatus.Failed });
       await this.eventService.record({
         generation_id: generationId,
         type: EventType.Output,
-        message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件）${testOk ? '' : '（测试待验证）'}`,
+        message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件）${testOk ? '' : '（测试未通过）'}`,
         payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: result.mock },
       });
     }

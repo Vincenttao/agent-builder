@@ -89,7 +89,9 @@ function matchesPrefix(command: string[]): boolean {
 }
 
 function hasPathEscape(command: string[]): boolean {
-  return command.some((arg) => arg.startsWith('/') || arg.includes('..'));
+  // Only match .. as a path segment, not as ... (ellipsis) or foo..bar.
+  const pathTraversal = /(?:^|\/)\.\.(?:$|\/)/;
+  return command.some((arg) => arg.startsWith('/') || pathTraversal.test(arg));
 }
 
 export function isCommandAllowed(command: string[]): AllowlistResult {
