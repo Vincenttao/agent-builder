@@ -1,8 +1,8 @@
 # Agent Builder P2 改进代办
 
-版本：v0.1 | 日期：2026-07-11
+版本：v0.2 | 日期：2026-07-11
 
-来源：对照 `docs/technical/p2_plan.md`、`docs/technical/p2_defects.md` 与当前代码实现后的审查结论。
+来源：对照 `docs/technical/p2_plan.md`、`docs/technical/p2_defects.md`、当前代码实现与最新审查结论。
 
 ## 一、当前判断
 
@@ -15,7 +15,7 @@
 -> 源码查看 / Agent 测试台 / Workflow 运行 / 导出
 ```
 
-自动化验证中，`typecheck`、单元/集成测试、4 条 Playwright E2E 主流程可以通过；但 `lint` 当前失败，且部分 P2 计划项只做到后端 API 或演示 fallback，尚未成为完整用户功能。
+自动化验证中，`typecheck`、单元/集成测试、4 条 Playwright E2E 主流程可以通过；但 `lint` 当前仍失败，且部分 P2 计划项只做到后端 API 或演示 fallback，尚未成为完整用户功能。
 
 因此，下一阶段不应继续扩大功能面，而应集中修订以下三类问题：
 
@@ -34,17 +34,45 @@
 | P1 | 强化真实/Mock 边界 | runner fallback、OpenCode fallback、Docker/mock 状态要显式 |
 | P2 | 安全基线加固 | Docker read-only/tmpfs/cap-drop 等增强项，避免阻塞主链路 |
 
-## 三、P0 必修项
+## 三、处理状态总览
+
+最新核对提交：`aa9bcbb fix: T-002 manifest contract, T-003 smoke test leak, T-004 repair contract`
+
+| 任务 | 当前状态 | 说明 | 下一步 |
+|---|---|---|---|
+| T-001 lint 门禁 | 未处理 | `npm run lint` 仍因 `react-hooks/exhaustive-deps` 未配置规则失败 | 必修 |
+| T-002 manifest 契约 | 部分处理 | 已新增 shared manifest 类型，TemplateEngine 会生成 manifest，runner 会读取 manifest 文件；但 runner 尚未实际使用 `entrypoint/test_command/run_command/example_input`，OpenCode `buildPrompt()` 未写入完整 manifest 约束 | 继续补齐 |
+| T-003 smoke test 漏检 | 部分处理 | OpenCode 缺失测试文件已返回失败并触发修复路径；但 OpenCode 有测试文件且测试失败时仍可能 promote 为 Passed | 必修 |
+| T-004 repair 响应契约 | 部分处理 | 后端/shared contract 已改为 `version_id: string \| null`；前端 `repairGeneration()` 类型仍声明 `version_id: string` | 必修 |
+| T-005 版本/Diff/日志 UI | 未处理 | API helper 存在，但工作区 UI 未消费，`CompletionSummary` 仍传 `version={null}` | P2 完整验收前处理 |
+| T-006 runner fallback 状态 | 未处理 | Python runner 异常 fallback 仍返回 `status: "success"`，会掩盖真实失败 | P2 完整验收前处理 |
+| T-007 环境自检/reset | 未处理 | 仍只有基础 `/health`/`/healthz`，没有深度自检和 demo reset | 后续迭代 |
+| T-008 P2 专项 E2E | 未处理 | 现有 P0/P1 E2E 覆盖主链路，但没有独立 `p2-demo-flows.spec.ts` | 后续迭代 |
+| T-009 Docker 安全增强 | 未处理 | 已有 `--init`、资源限制、`no-new-privileges`、`--network none`，未补 `cap-drop/read-only/tmpfs` | 后续迭代 |
+| T-010 CLI/runner 测试 | 未处理 | Python runner 有基础测试，CLI 薄层和 manifest/error/fallback 专项覆盖不足 | 后续迭代 |
+
+当前门禁状态：
+
+| 命令 | 状态 | 备注 |
+|---|---|---|
+| `npm run lint` | 未通过 | `GenerationWorkspace.tsx` 引用未配置的 `react-hooks/exhaustive-deps` rule |
+| `npm run typecheck` | 通过 | 最近审查已验证 |
+| `npm run test` | 通过 | 需非沙箱权限运行 Nest/Supertest 监听本地端口 |
+| `npm --workspace @agent-builder/web run test:e2e` | 通过 | 4 条 Playwright 主流程通过 |
+
+## 四、P0 必修项
 
 ### T-001：修复 lint 门禁
 
-**问题：** 当前 `npm run lint` 失败，主要原因是 `GenerationWorkspace.tsx` 使用了未配置的 `react-hooks/exhaustive-deps` 规则注释；同时 `orchestrator.service.ts` 中 repair 参数存在未使用警告。
+**状态：未处理。**
+
+**问题：** 当前 `npm run lint` 失败，主要原因是 `GenerationWorkspace.tsx` 使用了未配置的 `react-hooks/exhaustive-deps` 规则注释。
 
 **修改建议：**
 
 1. 删除或改写 `react-hooks/exhaustive-deps` disable 注释，避免引用不存在的 ESLint rule。
 2. 若需要 hooks 规则，应正式安装并配置 `eslint-plugin-react-hooks`，但不建议为一个注释引入新依赖。
-3. 清理 `repair()` 中未使用的 `instruction`、`gen`，或真正接入修复 prompt。
+3. 不建议为一个注释单独引入 hooks 插件；优先调整 effect 依赖或删除该 disable 注释。
 
 **验收：**
 
@@ -57,7 +85,22 @@ npm run typecheck
 
 ### T-002：实现生成物 manifest 契约
 
-**问题：** P2 计划要求 OpenCode/TemplateEngine 输出 `agent_builder_manifest.json`，但当前代码没有 manifest 生成、解析、校验或导出约定。
+**状态：部分处理。**
+
+**已处理：**
+
+1. `packages/shared-contracts/src/manifest.ts` 已定义 `AgentBuilderManifest`。
+2. TemplateEngine 已生成 `agent_builder_manifest.json`。
+3. Python runner 已优先尝试读取 `agent_builder_manifest.json`。
+4. OpenCode v1 命令文案已包含 manifest 必需文件提示。
+
+**未处理：**
+
+1. runner 读取 manifest 后尚未真正使用 `entrypoint`、`test_command`、`run_command`、`example_input`。
+2. `.agent_builder/prompt.md` 的 `buildPrompt()` 未写入 manifest 和 smoke test 必需文件清单，v0/v3 CLI 风格可能丢失约束。
+3. 缺少 manifest schema 校验与专项测试。
+
+**问题：** P2 计划要求 OpenCode/TemplateEngine 输出并消费 `agent_builder_manifest.json`。当前只完成了“生成/读取入口”，尚未形成完整契约。
 
 **修改建议：**
 
@@ -92,7 +135,19 @@ npm run typecheck
 
 ### T-003：修复 smoke test 漏检
 
-**问题：** 当前没有测试文件时，编排层会把 smoke test 标记为 skipped/pass，容易把不完整生成物晋级为可用版本。P2 计划要求缺失测试文件应触发修复。
+**状态：部分处理。**
+
+**已处理：**
+
+1. OpenCode 模式下缺失 `tests/test_*.py` 时，不再静默跳过。
+2. 缺失测试文件会记录 `MISSING_SMOKE_TEST` 风格事件，并返回失败结果供 retry/repair 使用。
+
+**未处理：**
+
+1. OpenCode 模式下 pytest 执行失败时，当前仍可能因为 `passed || this.codegenEngineName() === 'opencode'` 被 promote 为 Passed。
+2. 还缺少覆盖“有测试文件但测试失败不能晋级”的 orchestration 回归测试。
+
+**问题：** 缺失测试文件路径已修，但 smoke test 失败误晋级仍会把失败版本标成可用版本。
 
 **修改建议：**
 
@@ -109,7 +164,20 @@ npm run typecheck
 
 ### T-004：修订 repair 响应契约
 
-**问题：** `repair()` 当前返回 `{ version_id: '' }`，但 shared contract 要求 `version_id: string`。这会让前端无法准确追踪 repair 后的新版本。
+**状态：部分处理。**
+
+**已处理：**
+
+1. 后端 `repair()` 不再返回空字符串版本 ID，改为 `version_id: null`。
+2. shared contract 已同步为 `version_id: string | null`。
+3. repair 不再预创建孤儿版本，继续由 pipeline 生成并 promote 新版本。
+
+**未处理：**
+
+1. 前端 `repairGeneration()` 仍以内联类型声明 `version_id: string`，未复用 shared contract 的 `RepairResponse`。
+2. `instruction` 当前只记录 debug log，尚未进入 repair prompt。
+
+**问题：** 后端契约已修正，但前端类型和修复指令语义仍未完全对齐。
 
 **修改建议：**
 
@@ -125,6 +193,8 @@ npm run typecheck
 3. repair 不产生 orphan version，也不返回空 version id。
 
 ### T-005：补齐版本、Diff、日志 UI
+
+**状态：未处理。**
 
 **问题：** 后端已有 versions、diff、runs、run log API，但前端几乎未使用。P2 D5/D7 要求用户能从完成页看到版本、diff、日志和激活入口。
 
@@ -142,9 +212,11 @@ npm run typecheck
 2. repair 后新版本出现在版本列表中。
 3. 错误状态能跳转到相关日志。
 
-## 四、P1 改进项
+## 五、P1 改进项
 
 ### T-006：让 runner fallback 不再伪装成功
+
+**状态：未处理。**
 
 **问题：** Python runner 捕获异常后返回 `status: "success"` 和 mock 输出。这样有利于 demo 不中断，但会隐藏真实工程运行失败。
 
@@ -163,6 +235,8 @@ npm run typecheck
 
 ### T-007：补齐环境自检和 demo reset
 
+**状态：未处理。**
+
 **问题：** P2 计划中的环境自检、seed/reset、日志定位仍不完整。当前状态 chip 更像静态展示，不能在演示前判断环境是否可用。
 
 **修改建议：**
@@ -179,6 +253,8 @@ npm run typecheck
 3. reset 后两条标准 demo 可以重新执行。
 
 ### T-008：补齐 P2 专项 E2E 文件
+
+**状态：未处理。**
 
 **问题：** 当前 E2E 已覆盖主流程，但没有单独的 `p2-demo-flows.spec.ts` 来承载 P2 验收语义。
 
@@ -197,9 +273,11 @@ npm --workspace @agent-builder/web run test:e2e
 
 P2 专项脚本稳定通过。
 
-## 五、P2 加固项
+## 六、P2 加固项
 
 ### T-009：Docker 沙箱安全基线增强
+
+**状态：未处理。**
 
 **问题：** 当前已有 `--init`、资源限制、`no-new-privileges`、`--network none` 等基础参数，但未覆盖 read-only、tmpfs、cap drop 等更完整的隔离基线。
 
@@ -219,6 +297,8 @@ P2 专项脚本稳定通过。
 
 ### T-010：补 CLI 与 runner 专项测试
 
+**状态：未处理。**
+
 **问题：** `p2_defects.md` 保留了 D-026，runner auto-discovery 也主要依赖间接测试。
 
 **修改建议：**
@@ -232,20 +312,21 @@ P2 专项脚本稳定通过。
 1. CLI 入口参数错误、agent run、workflow run 均有测试。
 2. auto-discovery 缺失/多候选/无入口三类场景有明确断言。
 
-## 六、建议实施顺序
+## 七、建议实施顺序
 
 ### Milestone A：恢复可验收状态
 
 1. T-001 修复 lint。
-2. T-004 修订 repair 响应契约。
-3. 跑通 `npm run lint && npm run typecheck && npm run test`。
+2. T-003 修复 OpenCode smoke test 失败误晋级。
+3. T-004 同步前端 repair 响应类型。
+4. 跑通 `npm run lint && npm run typecheck && npm run test`。
 
 完成后，P2 至少不再被基础质量门禁阻断。
 
 ### Milestone B：补齐 P2 核心闭环
 
 1. T-002 manifest 契约。
-2. T-003 smoke test 防漏。
+2. T-003 smoke test 防漏剩余测试覆盖。
 3. T-005 版本、diff、日志 UI。
 4. T-006 runner fallback 状态语义。
 
@@ -266,7 +347,7 @@ P2 专项脚本稳定通过。
 
 完成后，P2 可以进入下一阶段产品化评审。
 
-## 七、最终验收门禁
+## 八、最终验收门禁
 
 P2 改进完成前，至少需要以下命令通过：
 
@@ -285,7 +366,7 @@ npm --workspace @agent-builder/web run test:e2e
 4. 版本列表、diff、日志查看截图。
 5. 导出 zip 解压后的文件清单，确认不包含 `.env`、`.opencode/`、`.agent_builder/` 等敏感或内部目录。
 
-## 八、暂不处理事项
+## 九、暂不处理事项
 
 以下事项继续后移，不纳入本轮 P2 改进：
 
@@ -295,4 +376,3 @@ npm --workspace @agent-builder/web run test:e2e
 4. Agent Store、Skills 独立创建和发布。
 5. 在线源码编辑回写。
 6. gVisor 完整落地。
-
