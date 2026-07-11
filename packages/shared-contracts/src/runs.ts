@@ -30,8 +30,12 @@ export interface RunRecord {
 
 /** Structured runner output (runtime_and_sandbox §11, architecture Phase 5 §9.3). */
 export interface RunnerResult {
-  status: 'success' | 'failed' | 'timeout';
+  status: 'success' | 'failed' | 'timeout' | 'fallback';
   output: Record<string, unknown>;
   events: Record<string, unknown>[];
   mock: boolean;
+  /** P2 T-006: 'mock' (intentional) | 'mock_fallback' (real run failed). */
+  mode?: 'mock' | 'mock_fallback';
+  /** When mode is mock_fallback, the underlying error. */
+  fallback_reason?: string;
 }

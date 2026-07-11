@@ -95,16 +95,20 @@ def run_agent(project_path: str, message: str) -> Dict[str, Any]:
             "output": result,
             "events": result.get("tool_calls", []),
             "mock": True,
+            "mode": "mock",
         }
     except Exception as e:
+        # T-006: distinguish intentional mock from fallback after real failure.
         return {
-            "status": "success",
+            "status": "fallback",
             "output": {
                 "reply": f"[mock 回复] 收到消息：{message[:200]}。该项目包含 {len(list(Path(project_path).rglob('*.py')))} 个 Python 文件。（Runner 提示：{e}）",
                 "tool_calls": [],
             },
             "events": [],
             "mock": True,
+            "mode": "mock_fallback",
+            "fallback_reason": str(e)[:500],
         }
 
 
@@ -119,19 +123,22 @@ def run_workflow(project_path: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
             "output": result.get("output"),
             "events": result.get("node_results", []),
             "mock": True,
+            "mode": "mock",
         }
     except Exception as e:
-        # Friendly fallback: show node-like results from project scan.
+        # T-006: friendly fallback with explicit status.
         py_files = list(Path(project_path).rglob("*.py"))
         nodes = [
             {"id": f"node_{i}", "name": f.stem, "status": "success", "output": f"Mock run: {f.name}"}
             for i, f in enumerate(py_files[:8])
         ]
         return {
-            "status": "success",
+            "status": "fallback",
             "output": {
                 "report": f"[mock 报告] 项目包含 {len(py_files)} 个文件。（Runner 提示：{e}）",
             },
             "events": nodes,
             "mock": True,
+            "mode": "mock_fallback",
+            "fallback_reason": str(e)[:500],
         }
