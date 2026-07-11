@@ -57,7 +57,29 @@ export class TemplateEngine implements CodeGenerationEngine {
     const specContent = JSON.stringify(spec, null, 2);
     this.assertNoSecrets(specContent, specFile);
     fs.writeFileSync(specPath, specContent, 'utf8');
-    const file: GeneratedFile = { path: specFile, size: specContent.length };
+    let file: GeneratedFile = { path: specFile, size: specContent.length };
+    files.push(file);
+    callbacks?.onFile?.(file);
+
+    // T-002: Write agent_builder_manifest.json
+    const projectType: 'agent' | 'workflow' = isAgent ? 'agent' : 'workflow';
+    const entrypoint = isAgent ? 'src/agents/agent.py' : 'src/workflows/workflow.py';
+    const testCommand = isAgent
+      ? 'pytest tests/test_agent_smoke.py -q'
+      : 'pytest tests/test_workflow_smoke.py -q';
+    const manifest = {
+      schema_version: '1.0',
+      project_type: projectType,
+      entrypoint,
+      test_command: testCommand,
+      run_command: isAgent ? 'python src/main.py' : 'python -m src.workflows.workflow',
+      example_input: isAgent ? '你好' : { requirement_doc: '示例需求文档内容' },
+      runtime: { framework: 'openjiuwen', mode: 'mock-compatible' },
+    };
+    const manifestPath = path.join(context.projectPath, 'agent_builder_manifest.json');
+    const manifestContent = JSON.stringify(manifest, null, 2);
+    fs.writeFileSync(manifestPath, manifestContent, 'utf8');
+    file = { path: 'agent_builder_manifest.json', size: manifestContent.length };
     files.push(file);
     callbacks?.onFile?.(file);
 

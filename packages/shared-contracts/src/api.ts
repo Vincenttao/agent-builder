@@ -60,10 +60,11 @@ export const repairRequestSchema = z.object({
 });
 export type RepairRequest = z.infer<typeof repairRequestSchema>;
 
-/** POST /api/generations/{id}/repair response. */
+/** POST /api/generations/{id}/repair response.
+ * version_id is null until the pipeline creates it asynchronously. */
 export interface RepairResponse {
   generation_id: string;
-  version_id: string;
+  version_id: string | null;
   version_label: string;
   retry_index: number;
 }

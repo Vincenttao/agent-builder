@@ -221,10 +221,20 @@ export class OrchestratorService {
     const version = this.genService.getActiveVersion(generationId);
     const projectPath = this.latestProjectPath(generationId);
 
-    // If no test files exist, skip smoke test.
+    // T-003: missing smoke test files should fail for opencode.
     const hasTests = this.hasTestFiles(projectPath);
     if (!hasTests) {
-      this.logger.debug('No test files found, skipping smoke test');
+      this.logger.warn(`No test files found for ${generationId}`);
+      if (this.codegenEngineName() === 'opencode') {
+        await this.eventService.record({
+          generation_id: generationId,
+          type: EventType.Thought,
+          message: '缺少 smoke test 文件，将触发自动修复',
+          payload: { reason: 'MISSING_SMOKE_TEST' },
+        });
+        return { passed: false, output: '生成物缺少测试文件 (tests/test_*.py)' };
+      }
+      // TemplateEngine always includes tests; skip is safe fallback.
       const latestVersion = this.latestVersion(generationId);
       if (latestVersion) {
         this.versionRepo.updateTestStatus(latestVersion.id, TestStatus.Passed);
@@ -320,8 +330,7 @@ export class OrchestratorService {
 
   // ─── Phase 14: Repair ────────────────────────────────────────────
 
-  async repair(generationId: string, instruction?: string): Promise<{ generation_id: string; version_id: string; version_label: string; retry_index: number }> {
-    const gen = this.genService.getByIdOrThrow(generationId);
+  async repair(generationId: string, instruction?: string): Promise<{ generation_id: string; version_id: string | null; version_label: string; retry_index: number }> {
     const existingCount = this.genService.countVersions(generationId);
     const maxRetries = parseInt(process.env.OPENCODE_MAX_RETRIES ?? '2', 10);
     if (existingCount >= maxRetries + 1) {
@@ -340,7 +349,11 @@ export class OrchestratorService {
       this.logger.error(`repair pipeline error for ${generationId}: ${(e as Error).message}`);
     });
 
-    return { generation_id: generationId, version_id: '', version_label: versionLabel, retry_index: retryIndex };
+    if (instruction) {
+      this.logger.debug(`repair instruction for ${generationId}: ${instruction}`);
+    }
+
+    return { generation_id: generationId, version_id: null, version_label: versionLabel, retry_index: retryIndex };
   }
 
   // ─── Phase 15: Draft / Confirm ───────────────────────────────────

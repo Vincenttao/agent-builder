@@ -16,3 +16,4 @@ export * from './sandbox';
 export * from './errors';
 export * from './api';
 export * from './specs';
+export * from './manifest';

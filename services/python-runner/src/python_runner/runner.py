@@ -26,6 +26,17 @@ def _find_file(project_path: str, patterns: list[str]) -> Optional[str]:
 
 def _load_spec(project_path: str, kind: str) -> Dict[str, Any]:
     """Load the Spec, auto-discovering it if not at the standard path."""
+    # 0. Try manifest first (T-002): gives entrypoint, test command, runtime info.
+    manifest_path = os.path.join(project_path, "agent_builder_manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            manifest = None
+    else:
+        manifest = None
+
     # 1. Try standard path (TemplateEngine output).
     std_path = os.path.join(project_path, "config", f"{kind}_spec.json")
     if os.path.exists(std_path):
@@ -41,7 +52,7 @@ def _load_spec(project_path: str, kind: str) -> Dict[str, Any]:
 
     # 3. Fallback: scan for any JSON with spec-like fields.
     for p in Path(project_path).rglob("*.json"):
-        if p.name == "package.json":
+        if p.name in ("package.json", "agent_builder_manifest.json"):
             continue
         try:
             data = json.loads(p.read_text(encoding="utf-8"))

@@ -344,8 +344,11 @@ export class OpenCodeEngine implements CodeGenerationEngine {
   private buildOpencodeCommand(modelArg: string): string[] {
     const style = process.env.OPENCODE_CLI_STYLE ?? 'v0';
     const genPrompt = '在当前目录 /workspace 下，读取 .agent_builder/prompt.md，生成完整的 Python 项目。'
-      + ' 必须输出：README.md、setup.py（或 pyproject.toml）、.env.example、'
+      + ' 必须输出：README.md、setup.py（或 pyproject.toml）、.env.example、agent_builder_manifest.json、'
       + ' src/ 下的 agent 源码 + openjiuwen_runtime 适配层 + tools、tests/ 下至少 1 个 test_*.py。'
+      + ' agent_builder_manifest.json 格式：{"schema_version":"1.0","project_type":"agent|workflow",'
+      + ' "entrypoint":"src/agents/agent.py","test_command":"pytest tests/ -q","run_command":"python src/main.py",'
+      + ' "example_input":"...","runtime":{"framework":"openjiuwen","mode":"mock-compatible"}}。'
       + ' 禁止使用 LangGraph/CrewAI/Dify/OpenAI Agents SDK。只能基于 src/openjiuwen_runtime。'
       + ' 直接创建在 /workspace，不要创建子项目目录。';
     switch (style) {
