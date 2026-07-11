@@ -50,6 +50,40 @@ export class TemplateEngine implements CodeGenerationEngine {
     const files: GeneratedFile[] = [];
     this.copyTree(templateDir, context.projectPath, context.projectPath, substitutions, files, callbacks);
 
+    // Generate tool files from the spec (replaces the generic tool_handler.py stub).
+    if (isAgent) {
+      const agentSpec = spec as AgentSpec;
+      const toolsDir = path.join(context.projectPath, 'src', 'tools');
+      fs.mkdirSync(toolsDir, { recursive: true });
+      for (const tool of agentSpec.tools) {
+        const toolContent = [
+          `"""${tool.name} — generated from Agent Spec.`,
+          '',
+          `Description: ${tool.description}`,
+          '"""',
+          'from __future__ import annotations',
+          '',
+          'from typing import Any, Dict',
+          '',
+          '',
+          `def handle(inputs: Dict[str, Any] | None) -> Dict[str, Any]:`,
+          `    """Mock handler for ${tool.name}."""`,
+          '    inputs = inputs or {}',
+          '    return {"result": "mock tool output", "received": inputs}',
+          '',
+        ].join('\n');
+        const toolPath = path.join(toolsDir, `${tool.name}.py`);
+        this.assertNoSecrets(toolContent, `src/tools/${tool.name}.py`);
+        fs.writeFileSync(toolPath, toolContent, 'utf8');
+        const toolFile: GeneratedFile = {
+          path: `src/tools/${tool.name}.py`,
+          size: Buffer.byteLength(toolContent),
+        };
+        files.push(toolFile);
+        callbacks?.onFile?.(toolFile);
+      }
+    }
+
     // Write the Spec as config (consumed by the generated runtime at import time).
     const specFile = isAgent ? 'config/agent_spec.json' : 'config/workflow_spec.json';
     const specPath = path.join(context.projectPath, specFile);
