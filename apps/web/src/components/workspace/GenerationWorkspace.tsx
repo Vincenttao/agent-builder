@@ -99,7 +99,6 @@ export function GenerationWorkspace({ id }: { id: string }) {
     const defaultPath = findDefault(tree);
     if (defaultPath) selectFile(defaultPath);
   // Only fire once on first tree load; selectedPath guard prevents re-fires.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tree, gen]);
 
   async function selectFile(path: string) {
