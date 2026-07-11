@@ -36,37 +36,220 @@ npm install                 # 安装所有 workspace 依赖（含 Next.js / Nest
 cd services/python-runner && pip install -e ".[dev]" && cd -   # 可选：安装 python-runner CLI
 ```
 
-## 本地启动
+## 部署
 
-### 方式 1 — Docker Compose（构建 sandbox 镜像）
+### 环境准备
 
 ```bash
+# 1. 克隆仓库
+git clone <repo-url> agent-builder && cd agent-builder
+
+# 2. 安装依赖
+npm install
+cd services/python-runner && pip install -e ".[dev]" && cd -
+
+# 3. 构建 sandbox 镜像（opencode 代码生成需要）
 docker compose up --build
-# 构建 agent-builder-sandbox 镜像（含 Python 3.11 + Node.js 20 + opencode）
-# API 和 Web 在宿主机通过 npm 启动，Docker sandbox 用于 opencode 执行
 ```
 
-### 方式 2 — 裸机启动
+### 方式 1 — 开发环境（裸机，推荐）
 
-后端（NestJS，端口 3001）：
+适用场景：本地开发、调试、Demo。API 和 Web 在宿主机运行，Docker 仅用于 opencode sandbox。
+
+**步骤 1：配置环境变量**
 
 ```bash
-# 纯 mock（CI/E2E 默认，无需密钥）：
-npm run dev:api
+cp apps/api/.env.example apps/api/.env
+```
 
-# 真实 LLM + opencode（需 apps/api/.env 配好密钥）：
+编辑 `apps/api/.env`，核心配置：
+
+```ini
+# ── Spec 解析（LLM）──
+SPEC_LLM_PROVIDER=openai-compatible       # mock（无密钥）或 openai-compatible
+SPEC_LLM_BASE_URL=https://api.deepseek.com/v1
+SPEC_LLM_API_KEY=sk-xxxxxxxxxxxxxxxx      # DeepSeek API key
+SPEC_LLM_MODEL=deepseek-chat
+
+# ── 代码生成引擎 ──
+CODEGEN_ENGINE=template                   # template（默认，快速稳定）
+# 或使用 opencode：
+# CODEGEN_ENGINE=opencode
+# OPENCODE_REQUIRE_REAL=true
+# OPENCODE_API_KEY=sk-xxxxxxxxxxxxxxxx    # opencode 使用的模型 key
+# OPENCODE_PROVIDER=deepseek
+# OPENCODE_MODEL=deepseek-chat
+
+# ── Runtime ──
+PORT=3001
+APP_NAME=agent-builder-api
+```
+
+**步骤 2：启动服务**
+
+```bash
+# 终端 1：后端 API（端口 3001）
 npm run dev:api:llm
-# 健康检查：curl http://localhost:3001/health
+# 或纯 mock 模式（无需密钥）：npm run dev:api
+
+# 终端 2：前端 Web（端口 3000）
+npm run dev:web
 ```
 
-前端（Next.js，端口 3000）：
+**步骤 3：验证**
 
 ```bash
-npm run dev:web
-# 打开 http://localhost:3000
+curl http://localhost:3001/health    # → {"status":"ok","service":"agent-builder-api","version":"0.1.0"}
+curl -I http://localhost:3000        # → HTTP 200
 ```
 
-前端通过 `next.config.mjs` 的 rewrite 将 `/api/*` 代理到 `http://localhost:3001`。
+打开 `http://localhost:3000`，选择 Agent/Workflow 类型，输入需求，开始生成。
+
+### 方式 2 — Docker 全栈部署
+
+适用场景：快速演示、CI 环境、不依赖宿主机 Node.js/Python。
+
+**步骤 1：准备 `.env`**
+
+同上，确保 `apps/api/.env` 已配置（API 容器通过 `--env-file` 加载）。
+
+**步骤 2：构建并启动**
+
+```bash
+# 构建 sandbox 镜像（含 opencode）
+docker compose build sandbox
+
+# 构建 API 镜像
+docker build -f docker/Dockerfile.api -t agent-builder-api .
+
+# 构建 Web 镜像
+docker build -f docker/Dockerfile.web -t agent-builder-web .
+
+# 启动
+docker run -d --name ab-api -p 3001:3001 \
+  -v $(pwd)/apps/api/.env:/app/apps/api/.env:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v $(pwd)/workspace:/app/workspace \
+  agent-builder-api
+
+docker run -d --name ab-web -p 3000:3000 \
+  -e NEXT_PUBLIC_API_BASE_URL=http://host.docker.internal:3001 \
+  agent-builder-web
+```
+
+**步骤 3：验证**
+
+```bash
+curl http://localhost:3001/health
+curl -I http://localhost:3000
+```
+
+### 方式 3 — 生产环境（多容器）
+
+适用场景：生产部署。API 和 Web 分别部署，sandbox 作为构建时依赖。
+
+```yaml
+# docker-compose.prod.yml
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports: ["3001:3001"]
+    volumes:
+      - ./apps/api/.env:/app/apps/api/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - api_workspace:/app/workspace
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports: ["3000:3000"]
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://api:3001
+    restart: unless-stopped
+
+volumes:
+  api_workspace:
+```
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 引擎模式说明
+
+| 模式 | CODEGEN_ENGINE | 说明 | 适用 |
+|------|---------------|------|------|
+| Template | `template` | 确定性模板生成，快速稳定，不需要 opencode | 开发调试、CI、快速 Demo |
+| OpenCode mock | `opencode` + `OPENCODE_REQUIRE_REAL=false` | 在 opencode 事件流中运行 TemplateEngine | CI 测试 opencode 事件路径 |
+| OpenCode real | `opencode` + `OPENCODE_REQUIRE_REAL=true` | 真实 `opencode run`，Docker sandbox + LLM | 生产级代码生成 |
+
+Mock 模式无需任何外部 API key，所有 prompt 走 `MockLlmSpecParser` 生成通用 Spec，完整流程（parse → generate → smoke test → run → export）均可跑通。
+
+### 目录结构（运行时）
+
+```text
+workspace/
+├── generated/          # 生成的项目文件（按 generation/version 组织）
+│   └── <gen_id>/
+│       └── <ver_id>/
+├── runs/               # sandbox 运行日志（stdout/stderr）
+├── exports/            # 导出 zip 包
+├── logs/               # 应用日志
+└── metadata.db         # SQLite 数据库（generation/version/event/run/draft/spec 表）
+```
+
+设置 `METADATA_DB_PATH=:memory:` 使用内存数据库（CI/E2E 默认）。
+
+### 常见问题
+
+**Q: `npm run dev:api:llm` 启动报错 "Cannot find module"**
+
+确保已运行 `npm install`（workspaces 依赖需要 hoist）。如果仍然失败，手动构建 contracts：
+
+```bash
+npm run build:contracts
+```
+
+**Q: opencode 不可用，日志显示 "OpenCode unavailable — falling back to TemplateEngine"**
+
+sandbox 镜像未构建或 Docker daemon 未运行：
+
+```bash
+docker compose up --build    # 构建 sandbox 镜像
+docker info                  # 检查 Docker 是否运行
+```
+
+**Q: Spec 解析失败，提示 "LLM 不可用"**
+
+检查 `apps/api/.env` 中 `SPEC_LLM_API_KEY` 和 `SPEC_LLM_BASE_URL` 是否正确。可先用 mock 模式验证：
+
+```bash
+# .env 中设置为 mock
+SPEC_LLM_PROVIDER=mock
+```
+
+**Q: 导出的 zip 包无法解压或内容不完整**
+
+导出经过安全过滤（移除 `.env`/`.agent_builder/`/`.opencode/`/`__pycache__`/`*.egg-info`/日志/缓存）。确认 `.env.example` 在项目中存在。
+
+**Q: Windows 下 npm 脚本报错**
+
+使用 WSL2 运行，或在 PowerShell 中设置：
+
+```powershell
+$env:NODE_OPTIONS="--openssl-legacy-provider"
+```
+
+**Q: 如何重置 Demo 数据**
+
+```bash
+rm -rf workspace/generated workspace/runs workspace/exports workspace/metadata.db
+# 重启 API 后自动重建
+```
 
 ## P2：统一 LLM 解析、Draft 确认流程、OpenCode 生成、体验增强
 
