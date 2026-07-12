@@ -15,6 +15,7 @@
     "test:web": "npm --workspace @agent-builder/web run test",
     "test:python": "cd services/python-runner && python -m pytest -q",
     "test:e2e": "npm --workspace @agent-builder/web run test:e2e",
+    "test:e2e:real": "node apps/api/scripts/real-opencode-e2e.mjs",
     "lint": "eslint .",
     "typecheck": "npm run build:contracts && npm run typecheck --workspaces --if-present",
     "build": "npm run build:contracts && npm --workspace @agent-builder/api run build && npm --workspace @agent-builder/web run build",
