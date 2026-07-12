@@ -66,9 +66,11 @@ export function GenerationWorkspace({ id }: { id: string }) {
     return () => { cancelled = true; };
   }, [id, isCompleted]);
 
-  // Refresh the file tree as generation events arrive. A single early fetch can
-  // race with file writes and leave the Source tab empty after completion.
-  const showFiles = Boolean(status && ![GenerationStatus.Pending, GenerationStatus.Planning].includes(status));
+  // Fetch the file tree once the generation is terminal. During generating/
+  // testing there is no active version yet, so GET /files would 400 with
+  // NO_ACTIVE_VERSION — we skip the fetch entirely rather than show a scary
+  // "load failed" banner while a (slow) real OpenCode run is in progress.
+  const isTerminal = status === GenerationStatus.Completed || status === GenerationStatus.Failed;
   const fileEventWatermark = events.reduce((latest, event) => {
     if (event.type === EventType.FileCreated || event.type === EventType.FileUpdated) {
       return Math.max(latest, event.sequence);
@@ -76,13 +78,18 @@ export function GenerationWorkspace({ id }: { id: string }) {
     return latest;
   }, 0);
   useEffect(() => {
-    if (!showFiles) return;
+    if (!isTerminal) return;
     let cancelled = false;
     getFileTree(id)
       .then((t) => { if (!cancelled) { setTree(t); setTreeError(null); } })
-      .catch((e) => { if (!cancelled) setTreeError((e as Error).message); });
+      .catch((e) => {
+        if (cancelled) return;
+        // A failed generation may have no active version — not a hard load error.
+        if ((e as Error & { error_code?: string }).error_code === 'NO_ACTIVE_VERSION') return;
+        setTreeError((e as Error).message);
+      });
     return () => { cancelled = true; };
-  }, [id, showFiles, status, tab, fileEventWatermark]);
+  }, [id, isTerminal, tab, fileEventWatermark]);
 
   // Auto-open the default source file once the file tree is ready (P2 D5).
   useEffect(() => {
