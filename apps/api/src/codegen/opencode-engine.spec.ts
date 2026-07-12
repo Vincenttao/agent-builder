@@ -376,12 +376,11 @@ describe('OpenCodeEngine', () => {
       expect(prompt).toContain('src/agents/agent.py');
       expect(prompt).toContain('tests/test_agent_smoke.py');
       expect(prompt).toContain('"test_command": "pytest tests/test_agent_smoke.py -q"');
-      expect(prompt).toContain('run_agent(message: str) -> str | dict');
-      expect(prompt).toContain('smoke test 必须直接覆盖 `run_agent()`');
-      expect(prompt).toContain('pytest tests/ -q 必须通过');
-      expect(prompt).toContain('python -m pip install -e . --no-build-isolation');
+      expect(prompt).toContain('run_agent(message: str) -> dict');
+      expect(prompt).toContain('def run_agent');
+      expect(prompt).toContain('`pytest tests/ -q` 必须通过');
       expect(prompt).toContain('setuptools.build_meta');
-      expect(prompt).toContain('测试不得访问真实网络');
+      expect(prompt).toContain('测试不要求真实 LLM 调用');
     });
   });
 
