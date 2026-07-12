@@ -15,7 +15,6 @@ interface NodeRecord {
  * Workflow run panel (PRD FR-008, §12.4). Runs the workflow with a requirement
  * doc and shows per-node status + the final Markdown report.
  * P3-005: prefills the doc from the manifest's example_input.
- * P3-006: surfaces mock_fallback status with the underlying reason.
  */
 export function WorkflowRunPanel({ generationId }: { generationId: string }) {
   const [doc, setDoc] = useState('客户希望建设一个智能客服 Demo，两周内上线，预算有限。');
@@ -23,8 +22,6 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
   const [report, setReport] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [runMode, setRunMode] = useState<string | null>(null);
-  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
   const [runCount, setRunCount] = useState(0);
   const userEditedRef = useRef(false);
 
@@ -49,8 +46,6 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
     setError(null);
     setNodes([]);
     setReport(null);
-    setRunMode(null);
-    setFallbackReason(null);
     try {
       const result: RunnerResult = await workflowRun(generationId, { requirement_doc: doc });
       setNodes((result.events as unknown as NodeRecord[]) ?? []);
@@ -60,8 +55,6 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
         (out?.result as string) ??
         (out ? JSON.stringify(out, null, 2) : null)
       );
-      setRunMode(result.mode ?? (result.mock ? 'mock' : null));
-      setFallbackReason(result.fallback_reason ?? null);
       setRunCount((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : '运行失败');
@@ -114,12 +107,6 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
           {running ? '运行中…' : '运行 Workflow'}
         </button>
       </form>
-
-      {runMode === 'mock_fallback' && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="workflow-fallback">
-          ⚠ Mock fallback — 真实运行失败，显示模拟输出{fallbackReason ? `：${fallbackReason}` : ''}
-        </div>
-      )}
 
       {nodes.length > 0 && (
         <div data-testid="workflow-nodes" className="overflow-hidden rounded-md border border-zinc-200">

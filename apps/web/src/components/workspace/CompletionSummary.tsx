@@ -58,8 +58,6 @@ export function CompletionSummary({
           <>
             <dt className="text-emerald-700">版本</dt>
             <dd className="text-emerald-950">{version.version_label}</dd>
-            <dt className="text-emerald-700">运行模式</dt>
-            <dd className="text-emerald-950">{version.mock_mode ? 'mock' : 'real'}</dd>
           </>
         )}
       </dl>

@@ -7,14 +7,13 @@ describe('AgentTestPanel (Phase 7 §11.2 #4)', () => {
     vi.restoreAllMocks();
   });
 
-  it('sends a message and shows the mock reply + tool calls', async () => {
+  it('sends a message and shows the reply + tool calls', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         status: 'success',
         output: { reply: '你问的是：事业\n抽到的牌：…' },
         events: [{ name: 'draw_tarot', input: { count: 3 }, output: { cards: [] } }],
-        mock: true,
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -51,7 +50,7 @@ describe('AgentTestPanel (Phase 7 §11.2 #4)', () => {
   it('clear button resets the conversation', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ status: 'success', output: { reply: '回复' }, events: [], mock: true }),
+      json: async () => ({ status: 'success', output: { reply: '回复' }, events: [] }),
     });
     vi.stubGlobal('fetch', fetchMock);
 

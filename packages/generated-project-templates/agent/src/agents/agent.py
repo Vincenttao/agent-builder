@@ -1,5 +1,5 @@
 """Generated Agent entry. Loads the Agent Spec and builds the agent via the
-OpenJiuwen adapter (mock in P0). The agent only depends on the adapter, not on
+OpenJiuwen adapter. The agent only depends on the adapter, not on
 any specific framework (PRD §8.4 — no LangGraph/CrewAI/Dify)."""
 from __future__ import annotations
 
@@ -25,4 +25,8 @@ def build_agent():
     return adapter.create_agent(spec)
 
 
-__all__ = ["build_agent", "load_spec"]
+def run_agent(message: str):
+    return build_agent().run(message)
+
+
+__all__ = ["build_agent", "load_spec", "run_agent"]

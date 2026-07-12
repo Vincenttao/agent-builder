@@ -65,10 +65,10 @@ export class RunService {
       generation_id: generationId,
       type: EventType.RunFinished,
       message: `Agent 运行结束：${result.status}`,
-      payload: { run_id: run.id, status: result.status, mock: result.mock },
+      payload: { run_id: run.id, status: result.status },
       run_id: run.id,
     });
-    return { status: result.status, output: result.output, events: result.events, mock: result.mock };
+    return { status: result.status, output: result.output, events: result.events };
   }
 
   async workflowRun(generationId: string, inputs: Record<string, unknown>): Promise<RunnerResult> {
@@ -101,10 +101,10 @@ export class RunService {
       generation_id: generationId,
       type: EventType.RunFinished,
       message: `Workflow 运行结束：${result.status}`,
-      payload: { run_id: run.id, status: result.status, mock: result.mock },
+      payload: { run_id: run.id, status: result.status },
       run_id: run.id,
     });
-    return { status: result.status, output: result.output, events: result.events, mock: result.mock };
+    return { status: result.status, output: result.output, events: result.events };
   }
 
   private async executeRunner(
@@ -121,9 +121,9 @@ export class RunService {
       jobType,
       command: ['python', '-m', 'python_runner.cli', ...sub],
       workspacePath: projectPath,
-      runtime: SandboxRuntime.Mock,
+      runtime: SandboxRuntime.Docker,
       stdin,
-      envAllowlist: { PYTHONPATH: PYTHON_RUNNER_SRC, MOCK_OPENJIUWEN: 'true' },
+      envAllowlist: { PYTHONPATH: PYTHON_RUNNER_SRC },
       timeoutSeconds: 60,
     });
 
@@ -145,7 +145,6 @@ export class RunService {
       status: parsed.status,
       output: parsed.output,
       events: parsed.events,
-      mock: parsed.mock,
       stdoutPath: sandboxResult.stdoutPath,
       stderrPath: sandboxResult.stderrPath,
       durationMs: sandboxResult.durationMs,

@@ -1,5 +1,5 @@
 """Generated Workflow entry. Loads the Workflow Spec and builds the workflow
-via the OpenJiuwen adapter (mock in P0)."""
+via the OpenJiuwen adapter."""
 from __future__ import annotations
 
 import json
@@ -24,4 +24,8 @@ def build_workflow():
     return adapter.create_workflow(spec)
 
 
-__all__ = ["build_workflow", "load_spec"]
+def run_workflow(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    return build_workflow().run(inputs)
+
+
+__all__ = ["build_workflow", "load_spec", "run_workflow"]

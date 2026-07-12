@@ -7,7 +7,7 @@ import { SpecRepository } from './repositories/spec.repository';
 import { EventService } from './event.service';
 import { GenerationService } from './generation.service';
 import { SpecParserService } from '../spec/spec-parser.service';
-import { MockLlmSpecParser } from '../spec/mock-llm-spec-parser';
+import { TestSpecParser } from '../testing/test-spec-parser';
 import { SpecValidatorService } from '../spec/spec-validator.service';
 import type { LlmSpecParser } from '../spec/llm-spec-parser';
 import { expectAgentBuilderError } from '../testing/expect-error';
@@ -26,7 +26,7 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     for (const d of dbs) d.close();
   });
 
-  function build(llm: LlmSpecParser = new MockLlmSpecParser()) {
+  function build(llm: LlmSpecParser = new TestSpecParser()) {
     const db = createInMemoryDb();
     dbs.push(db);
     const genRepo = new GenerationRepository(db);
@@ -79,13 +79,13 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
 
     const spec = await genService.parseAndPersistSpec(gen.id);
 
-    // All prompts go through LLM — mock returns generic spec.
+    // All prompts go through LLM — test parser returns generic spec.
     expect(spec.name).toBe('通用智能体');
     const persisted = specRepo.getByGeneration(gen.id);
     expect(persisted).not.toBeNull();
     expect(persisted!.spec.name).toBe('通用智能体');
     expect(persisted!.parser_mode).toBe('llm');
-    expect(persisted!.provider).toBe('mock');
+    expect(persisted!.provider).toBe('test');
     const events = eventRepo.listByGeneration(gen.id);
     expect(events.some((e) => e.type === EventType.Thought)).toBe(true);
     expect(genRepo.getById(gen.id)!.title).toBe('通用智能体');
@@ -94,11 +94,11 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
   it('#3 parseAndPersistSpec is idempotent — does not re-invoke the parser', async () => {
     let calls = 0;
     const countingLlm: LlmSpecParser = {
-      provider: 'mock',
+      provider: 'test',
       model: null,
       parse: async (p, t) => {
         calls++;
-        return new MockLlmSpecParser().parse(p, t);
+        return new TestSpecParser().parse(p, t);
       },
     };
     const { genService } = build(countingLlm);
@@ -125,11 +125,11 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     });
     await expectAgentBuilderError(() => genService.getSpec(gen.id), ErrorCode.PromptParseFailed);
     await genService.parseAndPersistSpec(gen.id);
-    // All prompts go through LLM — even tarot returns the mock generic spec.
+    // All prompts go through LLM — even tarot returns the test generic spec.
     expect(genService.getSpec(gen.id).name).toBe('通用智能体');
   });
 
-  it('#5 a non-example prompt parses via the mock LLM and persists a non-tarot spec', async () => {
+  it('#5 a non-example prompt parses via the test parser and persists a non-tarot spec', async () => {
     const { specRepo, genService } = build();
     const gen = await genService.createGeneration({
       type: GenerationType.Agent,
@@ -139,7 +139,7 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
     });
     const spec = await genService.parseAndPersistSpec(gen.id);
     expect(spec.name).toBe('通用智能体');
-    expect(specRepo.getByGeneration(gen.id)!.provider).toBe('mock');
+    expect(specRepo.getByGeneration(gen.id)!.provider).toBe('test');
   });
 
   it('#6 all prompts (including demo keywords) go through the LLM parser', async () => {
@@ -151,7 +151,7 @@ describe('GenerationService (Phase 9 — async parse pipeline + spec persistence
       model: 'default',
     });
     const spec = await genService.parseAndPersistSpec(gen.id);
-    // Mock LLM returns generic spec — no more deterministic/demo bypass.
+    // Test parser returns generic spec — no more deterministic/demo bypass.
     expect(spec.name).toBe('通用智能体');
   });
 

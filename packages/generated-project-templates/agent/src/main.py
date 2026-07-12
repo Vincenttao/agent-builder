@@ -1,21 +1,17 @@
 """Entry point: run the agent with a message and print structured JSON.
 
 Usage: python src/main.py "<message>"
-P0 runs in mock mode (MOCK_OPENJIUWEN=true) so no key is required.
 """
 from __future__ import annotations
 
 import json
 import sys
 
-from src.agents.agent import build_agent
+from src.agents.agent import run_agent
 
 
 def run(message: str):
-    agent = build_agent()
-    # Two-turn flow per the system prompt: ask question, then draw + interpret.
-    agent.run("开始占卜")
-    return agent.run(message)
+    return run_agent(message)
 
 
 def main(argv: list[str] | None = None) -> int:

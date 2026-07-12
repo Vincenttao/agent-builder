@@ -1,7 +1,7 @@
 [project]
 name = "python-runner"
 version = "0.1.0"
-description = "Agent Builder Python Runner — runs generated OpenJiuwen Agent/Workflow projects under a mock OpenJiuwen runtime."
+description = "Agent Builder Python Runner — runs generated OpenJiuwen Agent/Workflow project entrypoints."
 requires-python = ">=3.10"
 dependencies = []
 

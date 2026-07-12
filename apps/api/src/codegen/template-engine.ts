@@ -22,8 +22,7 @@ function slugify(name: string): string {
 
 /**
  * TemplateEngine — deterministic file-tree generation from a Spec (architecture
- * §5.5, P0 plan §8). The P0 fallback when OpenCode is unavailable, and the
- * primary engine for the two demo prompts.
+ * §5.5, P0 plan §8).
  *
  * Files are copied from packages/generated-project-templates/{agent,workflow}
  * into the generation's workspace, the Spec is written as config/*.json, and
@@ -67,9 +66,8 @@ export class TemplateEngine implements CodeGenerationEngine {
           '',
           '',
           `def handle(inputs: Dict[str, Any] | None) -> Dict[str, Any]:`,
-          `    """Mock handler for ${tool.name}."""`,
-          '    inputs = inputs or {}',
-          '    return {"result": "mock tool output", "received": inputs}',
+          `    """${tool.name} has no generated implementation."""`,
+          `    raise NotImplementedError("Tool '${tool.name}' requires a real implementation")`,
           '',
         ].join('\n');
         const toolPath = path.join(toolsDir, `${tool.name}.py`);
@@ -108,7 +106,7 @@ export class TemplateEngine implements CodeGenerationEngine {
       test_command: testCommand,
       run_command: isAgent ? 'python src/main.py' : 'python -m src.workflows.workflow',
       example_input: isAgent ? '你好' : { requirement_doc: '示例需求文档内容' },
-      runtime: { framework: 'openjiuwen', mode: 'mock-compatible' },
+      runtime: { framework: 'openjiuwen', mode: 'real' },
     };
     const manifestPath = path.join(context.projectPath, 'agent_builder_manifest.json');
     const manifestContent = JSON.stringify(manifest, null, 2);
@@ -122,7 +120,6 @@ export class TemplateEngine implements CodeGenerationEngine {
       projectPath: context.projectPath,
       files,
       warnings: [],
-      mock: true,
     };
   }
 

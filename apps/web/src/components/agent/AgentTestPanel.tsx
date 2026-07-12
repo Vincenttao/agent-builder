@@ -6,7 +6,7 @@ import type { RunnerResult, GenerationDto } from '@agent-builder/shared-contract
 
 /**
  * Agent effect test bench (PRD FR-007, §12.3). Sends a message and shows the
- * mock reply + recorded tool calls. D-023: shows agent name and mock status.
+ * reply + recorded tool calls.
  * P3-005: prefills the message from the manifest's example_input.
  */
 export function AgentTestPanel({ generationId }: { generationId: string }) {
@@ -16,7 +16,6 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gen, setGen] = useState<GenerationDto | null>(null);
-  const [runMode, setRunMode] = useState<string | null>(null);
   const [runCount, setRunCount] = useState(0);
   // Track whether the user typed, so a late manifest load can't overwrite it.
   const userEditedRef = useRef(false);
@@ -40,7 +39,6 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
       const result: RunnerResult = await agentRun(generationId, message.trim());
       setReply((result.output as { reply?: string } | null)?.reply ?? '(无回复)');
       setToolCalls(result.events ?? []);
-      setRunMode(result.mode ?? (result.mock ? 'mock' : null));
       setRunCount((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : '运行失败');
@@ -104,11 +102,6 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
         </button>
       </form>
 
-      {runMode === 'mock_fallback' && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="agent-fallback">
-          ⚠ Mock fallback — 真实运行失败，显示模拟输出
-        </div>
-      )}
       {reply && (
         <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 whitespace-pre-wrap text-zinc-800" data-testid="agent-reply">
           {reply}

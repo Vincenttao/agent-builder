@@ -1,4 +1,4 @@
 """OpenJiuwen agent runtime (mock in P0)."""
-from .agent_runtime import AgentAdapter, MockAgent, MockTool
+from .agent_runtime import AgentAdapter, GeneratedAgent, ToolRunner
 
-__all__ = ["AgentAdapter", "MockAgent", "MockTool"]
+__all__ = ["AgentAdapter", "GeneratedAgent", "ToolRunner"]

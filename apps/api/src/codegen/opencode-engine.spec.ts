@@ -40,7 +40,7 @@ describe('OpenCodeEngine', () => {
   // ---------------------------------------------------------------------------
   // Mock mode (requireReal=false) — existing P0 behaviour
   // ---------------------------------------------------------------------------
-  describe('mock mode (requireReal=false)', () => {
+  describe('template mode (requireReal=false)', () => {
     it('delegates to TemplateEngine and emits opencode_* events', async () => {
       const templateEngine = new TemplateEngine();
       const sandbox = buildSandboxService();
@@ -52,7 +52,7 @@ describe('OpenCodeEngine', () => {
 
       const result = await engine.generate(
         TAROT_AGENT_SPEC as AgentSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
         {
           onFile: (f) => files.push({ path: f.path }),
           onEvent: (type, message) => events.push({ type, message }),
@@ -91,7 +91,7 @@ describe('OpenCodeEngine', () => {
       const events: EventType[] = [];
       const result = await engine.generate(
         TAROT_AGENT_SPEC as AgentSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
         { onEvent: (type) => events.push(type as EventType) },
       );
 
@@ -114,7 +114,7 @@ describe('OpenCodeEngine', () => {
       await expect(
         engine.generate(
           TAROT_AGENT_SPEC as AgentSpec,
-          { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+          { generationId: 'gen', versionId: 'ver', projectPath },
         ),
       ).rejects.toThrow(/OPENCODE_ALLOW_FALLBACK=false/);
       // No template files written — the engine did not silently substitute.
@@ -132,7 +132,7 @@ describe('OpenCodeEngine', () => {
       const projectPath = tmpProject();
       const result = await engine.generate(
         TAROT_AGENT_SPEC as AgentSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
       );
       expect(result.engine).toBe('template');
       fs.rmSync(projectPath, { recursive: true, force: true });
@@ -146,6 +146,12 @@ describe('OpenCodeEngine', () => {
     it('executes opencode via SandboxService and scans generated files', async () => {
       const templateEngine = new TemplateEngine();
       const sandbox = buildSandboxService();
+      const stderrPath = path.join(os.tmpdir(), `ab-oc-${Date.now()}-stderr.log`);
+      fs.writeFileSync(
+        stderrPath,
+        "ERROR collecting tests/test_agent_smoke.py\nModuleNotFoundError: No module named 'openjiuwen_runtime'\n25 passed in 0.05s\n",
+        'utf8',
+      );
       // Mock sandbox.run to simulate a successful opencode execution.
       const runMock = jest.spyOn(sandbox, 'run').mockResolvedValue({
         jobId: 'job_oc_1',
@@ -153,7 +159,7 @@ describe('OpenCodeEngine', () => {
         status: SandboxJobStatus.Success,
         exitCode: 0,
         stdoutPath: '/tmp/stdout.log',
-        stderrPath: '/tmp/stderr.log',
+        stderrPath,
         durationMs: 5000,
         mock: true,
       });
@@ -178,7 +184,7 @@ describe('OpenCodeEngine', () => {
       const events: EventType[] = [];
       const result = await engine.generate(
         TAROT_AGENT_SPEC as AgentSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: false },
+        { generationId: 'gen', versionId: 'ver', projectPath },
         { onEvent: (type) => events.push(type as EventType) },
       );
 
@@ -201,7 +207,7 @@ describe('OpenCodeEngine', () => {
 
       // Result
       expect(result.engine).toBe('opencode');
-      expect(result.mock).toBe(true); // sandbox was mock
+      expect(result.engine).toBe('opencode');
 
       // File scanning: .agent_builder/ excluded.
       const filePaths = result.files.map((f) => f.path);
@@ -217,6 +223,7 @@ describe('OpenCodeEngine', () => {
       expect(events).toContain(EventType.OpencodeFinished);
 
       fs.rmSync(projectPath, { recursive: true, force: true });
+      fs.rmSync(stderrPath, { force: true });
     });
 
     it('throws CodeGenerationFailed when sandbox returns failed', async () => {
@@ -240,7 +247,7 @@ describe('OpenCodeEngine', () => {
       await expect(
         engine.generate(
           TAROT_AGENT_SPEC as AgentSpec,
-          { generationId: 'gen', versionId: 'ver', projectPath, mock: false },
+          { generationId: 'gen', versionId: 'ver', projectPath },
         ),
       ).rejects.toThrow(/OpenCode 执行失败/);
 
@@ -268,7 +275,7 @@ describe('OpenCodeEngine', () => {
       await expect(
         engine.generate(
           TAROT_AGENT_SPEC as AgentSpec,
-          { generationId: 'gen', versionId: 'ver', projectPath, mock: false },
+          { generationId: 'gen', versionId: 'ver', projectPath },
         ),
       ).rejects.toThrow(/OpenCode 执行失败/);
 
@@ -280,7 +287,7 @@ describe('OpenCodeEngine', () => {
   // File scanning
   // ---------------------------------------------------------------------------
   describe('scanProjectFiles', () => {
-    it('excludes .agent_builder/ and .opencode/ directories', () => {
+    it('excludes internal metadata, cache, and bytecode files', () => {
       // Access the private method via bracket notation for testing.
       const templateEngine = new TemplateEngine();
       const sandbox = buildSandboxService();
@@ -292,9 +299,14 @@ describe('OpenCodeEngine', () => {
       fs.writeFileSync(path.join(projectPath, '.agent_builder', 'prompt.md'), 'p');
       fs.mkdirSync(path.join(projectPath, '.opencode'), { recursive: true });
       fs.writeFileSync(path.join(projectPath, '.opencode', 'config.json'), '{}');
+      fs.mkdirSync(path.join(projectPath, '.pytest_cache'), { recursive: true });
+      fs.writeFileSync(path.join(projectPath, '.pytest_cache', 'README.md'), 'cache');
       fs.writeFileSync(path.join(projectPath, 'README.md'), 'r');
       fs.mkdirSync(path.join(projectPath, 'src'), { recursive: true });
       fs.writeFileSync(path.join(projectPath, 'src', 'main.py'), 'm');
+      fs.mkdirSync(path.join(projectPath, 'src', '__pycache__'), { recursive: true });
+      fs.writeFileSync(path.join(projectPath, 'src', '__pycache__', 'main.cpython-311.pyc'), 'bytecode');
+      fs.writeFileSync(path.join(projectPath, 'src', 'module.pyc'), 'bytecode');
 
       const files = scan(projectPath);
       const paths = files.map((f: any) => f.path);
@@ -302,8 +314,51 @@ describe('OpenCodeEngine', () => {
       expect(paths).toContain('src/main.py');
       expect(paths).not.toContain(expect.stringContaining('.agent_builder'));
       expect(paths).not.toContain(expect.stringContaining('.opencode'));
+      expect(paths).not.toContain(expect.stringContaining('.pytest_cache'));
+      expect(paths).not.toContain(expect.stringContaining('__pycache__'));
+      expect(paths).not.toContain(expect.stringContaining('.pyc'));
 
       fs.rmSync(projectPath, { recursive: true, force: true });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // opencode v1 log parsing (parseOpencodeLog)
+  // ---------------------------------------------------------------------------
+  describe('parseOpencodeLog (v1 pretty output)', () => {
+    const templateEngine = new TemplateEngine();
+    const sandbox = buildSandboxService();
+    const engine = new OpenCodeEngine(templateEngine, sandbox, false);
+    const parse = (line: string) => (engine as any).parseOpencodeLog(line);
+
+    it('parses file read/edit/write actions into progress events', () => {
+      // shortPath keeps the last 2 path segments.
+      expect(parse('→ Read .agent_builder/prompt.md')).toBe('读取 .agent_builder/prompt.md');
+      expect(parse('← Edit src/main.py')).toBe('编辑 src/main.py');
+      expect(parse('← Write src/agents/agent.py')).toBe('创建 agents/agent.py');
+    });
+
+    it('parses the build/model banner and test-pass lines', () => {
+      expect(parse('> build · deepseek-v4-pro')).toBe('开始构建（deepseek-v4-pro）');
+      expect(parse('All 21 tests pass.')).toBe('测试通过（21）');
+      expect(parse('All tests pass.')).toBe('测试通过');
+    });
+
+    it('surfaces Python tracebacks and errors as warnings', () => {
+      expect(parse('Traceback (most recent call last):')).toMatch(/^⚠️ Traceback/);
+      expect(parse("ModuleNotFoundError: No module named 'src'")).toMatch(/^⚠️ ModuleNotFoundError/);
+    });
+
+    it('skips unified-diff hunks and blank lines', () => {
+      expect(parse('+import os')).toBeNull();
+      expect(parse('-old line')).toBeNull();
+      expect(parse('@@ -1,6 +1,9 @@')).toBeNull();
+      expect(parse('   ')).toBeNull();
+    });
+
+    it('still handles v0 structured message= lines (backward compat)', () => {
+      // v0 captures a single-token message + key=val fields.
+      expect(parse('message=stream modelID=deepseek-v4-pro')).toBe('LLM 调用中…（deepseek-v4-pro）');
     });
   });
 
@@ -321,7 +376,11 @@ describe('OpenCodeEngine', () => {
       expect(prompt).toContain('src/agents/agent.py');
       expect(prompt).toContain('tests/test_agent_smoke.py');
       expect(prompt).toContain('"test_command": "pytest tests/test_agent_smoke.py -q"');
+      expect(prompt).toContain('run_agent(message: str) -> str | dict');
+      expect(prompt).toContain('smoke test 必须直接覆盖 `run_agent()`');
       expect(prompt).toContain('pytest tests/ -q 必须通过');
+      expect(prompt).toContain('python -m pip install -e . --no-build-isolation');
+      expect(prompt).toContain('setuptools.build_meta');
       expect(prompt).toContain('测试不得访问真实网络');
     });
   });

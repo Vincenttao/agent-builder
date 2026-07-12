@@ -82,9 +82,6 @@ export function VersionList({
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusTone[v.test_status] ?? 'bg-zinc-100 text-zinc-600'}`}>
                     {v.test_status}
                   </span>
-                  {v.mock_mode && (
-                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500">mock</span>
-                  )}
                   {isActive && (
                     <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand" data-testid="active-tag">
                       active

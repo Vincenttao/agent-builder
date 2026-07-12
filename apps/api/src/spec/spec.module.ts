@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SpecParserService } from './spec-parser.service';
 import { SpecValidatorService } from './spec-validator.service';
-import { MockLlmSpecParser } from './mock-llm-spec-parser';
 import {
   OpenAiCompatibleSpecParser,
   createFetchChatCompletion,
@@ -15,7 +14,7 @@ import type { LlmSpecParser } from './llm-spec-parser';
  * deterministic keyword-match bypass for demo prompts.
  */
 function resolveLlmParser(): LlmSpecParser {
-  const provider = process.env.SPEC_LLM_PROVIDER ?? 'mock';
+  const provider = process.env.SPEC_LLM_PROVIDER ?? 'openai-compatible';
   if (provider === 'openai-compatible') {
     const baseUrl = process.env.SPEC_LLM_BASE_URL ?? '';
     const apiKey = process.env.SPEC_LLM_API_KEY ?? '';
@@ -25,7 +24,7 @@ function resolveLlmParser(): LlmSpecParser {
     const opts = { baseUrl, apiKey, model, timeoutSeconds, maxRetries };
     return new OpenAiCompatibleSpecParser(opts, createFetchChatCompletion(opts));
   }
-  return new MockLlmSpecParser();
+  throw new Error(`Unsupported SPEC_LLM_PROVIDER: ${provider}`);
 }
 
 @Module({

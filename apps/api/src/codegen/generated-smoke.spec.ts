@@ -38,7 +38,7 @@ describe('generated project smoke tests (Phase 5 §9.4 #4/#5)', () => {
     try {
       await templateEngine.generate(
         TAROT_AGENT_SPEC as AgentSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
       );
 
       const result = await sandbox.run({
@@ -66,7 +66,7 @@ describe('generated project smoke tests (Phase 5 §9.4 #4/#5)', () => {
     try {
       await templateEngine.generate(
         PRESALES_WORKFLOW_SPEC as WorkflowSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
       );
 
       const result = await sandbox.run({

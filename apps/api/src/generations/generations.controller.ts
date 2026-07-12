@@ -78,6 +78,16 @@ export class GenerationsController {
     return dto;
   }
 
+  @Get(':id/events/history')
+  eventHistory(
+    @Param('id') id: string,
+    @Query('after') after?: string,
+  ) {
+    this.genService.getByIdOrThrow(id);
+    const afterSequence = after ? Number.parseInt(after, 10) : 0;
+    return this.eventService.history(id, Number.isFinite(afterSequence) ? afterSequence : 0);
+  }
+
   /**
    * SSE event stream (architecture §8.3). Replays persisted history in
    * sequence order, then streams live events until the client disconnects.

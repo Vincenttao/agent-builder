@@ -19,7 +19,7 @@ describe('TemplateEngine (Phase 4 §8.2)', () => {
     it('generates the standard Agent directory layout', async () => {
       const result = await engine.generate(
         TAROT_AGENT_SPEC as AgentSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
       );
       const exists = (rel: string) => fs.existsSync(path.join(projectPath, rel));
       expect(exists('pyproject.toml')).toBe(true);
@@ -62,7 +62,7 @@ describe('TemplateEngine (Phase 4 §8.2)', () => {
     it('generates the standard Workflow directory layout', async () => {
       await engine.generate(
         PRESALES_WORKFLOW_SPEC as WorkflowSpec,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
       );
       const exists = (rel: string) => fs.existsSync(path.join(projectPath, rel));
       expect(exists('pyproject.toml')).toBe(true);
@@ -86,7 +86,7 @@ describe('TemplateEngine (Phase 4 §8.2)', () => {
     const files: { path: string; size: number }[] = [];
     const result = await engine.generate(
       TAROT_AGENT_SPEC as AgentSpec,
-      { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+      { generationId: 'gen', versionId: 'ver', projectPath },
       { onFile: (f) => files.push(f) },
     );
     expect(files.length).toBe(result.files.length);
@@ -99,7 +99,7 @@ describe('TemplateEngine (Phase 4 §8.2)', () => {
     const projectPath = tmpProject();
     const result = await engine.generate(
       PRESALES_WORKFLOW_SPEC as WorkflowSpec,
-      { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+      { generationId: 'gen', versionId: 'ver', projectPath },
     );
     for (const f of result.files) {
       const full = path.resolve(projectPath, f.path);
@@ -114,7 +114,7 @@ describe('TemplateEngine (Phase 4 §8.2)', () => {
     await expect(
       engine.generate(
         tainted,
-        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        { generationId: 'gen', versionId: 'ver', projectPath },
       ),
     ).rejects.toThrow(/secret/);
     fs.rmSync(projectPath, { recursive: true, force: true });

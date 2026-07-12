@@ -1,4 +1,4 @@
-"""OpenJiuwen workflow runtime (mock in P0)."""
-from .workflow_runtime import WorkflowAdapter, MockWorkflow
+"""OpenJiuwen workflow runtime."""
+from .workflow_runtime import WorkflowAdapter, WorkflowRunner
 
-__all__ = ["WorkflowAdapter", "MockWorkflow"]
+__all__ = ["WorkflowAdapter", "WorkflowRunner"]

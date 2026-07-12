@@ -88,12 +88,11 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       .expect(200);
     expect(content.body.content).toContain('build_agent');
 
-    // #7 agent run returns a mock reply
+    // #7 agent run returns the generated project reply
     const run = await request(httpServer)
       .post(`/api/generations/${id}/agent/runs`)
       .send({ message: '我想看看最近职业发展的趋势' })
       .expect(201);
-    expect(run.body.mock).toBe(true);
     expect(run.body.status).toBe('success');
     expect(run.body.output.reply).toBeTruthy();
     expect(run.body.events.length).toBeGreaterThan(0); // tool call recorded
@@ -131,7 +130,6 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       .post(`/api/generations/${id}/workflow/runs`)
       .send({ inputs: { requirement_doc: '客户希望智能客服 Demo，两周内上线。' } })
       .expect(201);
-    expect(run.body.mock).toBe(true);
     expect(run.body.status).toBe('success');
     // All prompts go through LLM — generic workflow output, not presales-specific.
     expect(run.body.output).toBeTruthy();
@@ -148,11 +146,11 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       .expect(400);
   });
 
-  it('#4 non-example Agent prompt parses via the mock LLM and completes (Phase 11)', async () => {
+  it('#4 non-example Agent prompt parses via the configured parser and completes (Phase 11)', async () => {
     const id = await createAndWait('做一个天气查询 Agent，根据城市返回天气信息', 'agent');
     // The parsed Spec is persisted and read back without re-parsing (§9 test #9).
     const spec = genService.getSpec(id);
-    expect(spec.name).toBe('通用智能体'); // mock LLM generic spec, not the tarot demo
+    expect(spec.name).toBe('通用智能体');
     // Source files present.
     const tree = (await request(httpServer).get(`/api/generations/${id}/files`).expect(200)).body;
     expect(JSON.stringify(tree)).toContain('src/agents/agent.py');
@@ -165,7 +163,7 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     expect(run.body.output.reply).not.toContain('牌');
   });
 
-  it('#5 non-example Workflow prompt parses via the mock LLM and completes (Phase 11)', async () => {
+  it('#5 non-example Workflow prompt parses via the configured parser and completes (Phase 11)', async () => {
     const id = await createAndWait('合同审核流程，抽取关键条款并标注风险等级', 'workflow');
     const spec = genService.getSpec(id);
     expect(spec.name).toBe('通用处理工作流');
@@ -177,7 +175,7 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     expect(run.body.events.length).toBeGreaterThan(0);
   });
 
-  it('fails opencode pipeline when dependency installation fails', async () => {
+  it('keeps opencode pipeline going when packaging installation check fails', async () => {
     const prevEngine = process.env.CODEGEN_ENGINE;
     const prevRetries = process.env.OPENCODE_MAX_RETRIES;
     process.env.CODEGEN_ENGINE = 'opencode';
@@ -217,11 +215,15 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       await orchestrator.runPipeline(gen.id);
 
       const final = genService.getByIdOrThrow(gen.id);
-      expect(final.status).toBe('failed');
+      expect(final.status).toBe('completed');
       const version = versionRepo.listByGeneration(gen.id)[0];
-      expect(version?.test_status).toBe(TestStatus.Failed);
+      expect(version?.test_status).toBe(TestStatus.Passed);
       const pipRun = runSpy.mock.calls.find((call) => call[0].command[2] === 'pip')?.[0];
       expect(pipRun?.command).toEqual(expect.arrayContaining(['--no-build-isolation']));
+      const { EventService } = await import('../generations/event.service');
+      const events = app.get(EventService).history(gen.id);
+      const warning = events.find((e) => e.type === 'thought' && e.payload?.packaging_warning === true);
+      expect(warning?.message).toContain('打包安装检查未通过');
     } finally {
       runSpy.mockRestore();
       fs.rmSync(logDir, { recursive: true, force: true });
@@ -273,12 +275,14 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     const stdoutPath = path.join(logDir, 'stdout.log');
     const stderrPath = path.join(logDir, 'stderr.log');
     fs.writeFileSync(stdoutPath, '');
-    fs.writeFileSync(stderrPath, 'pip install failed');
+    fs.writeFileSync(stderrPath, 'pytest failed');
 
     const realRun = sandbox.run.bind(sandbox);
+    let failNextPytest = true;
     const runSpy = jest.spyOn(sandbox, 'run').mockImplementation(async (req) => {
-      // Fail pip install so the opencode pipeline fails (no retry, retries=0).
-      if (req.command[0] === 'python' && req.command[2] === 'pip') {
+      // Fail pytest so the opencode pipeline fails (no retry, retries=0).
+      if (failNextPytest && req.command[0] === 'python' && req.command[2] === 'pytest') {
+        failNextPytest = false;
         return {
           jobId: 'sjob_install_failed',
           runtime: SandboxRuntime.Mock,
@@ -343,7 +347,7 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       if (prevRetries === undefined) delete process.env.OPENCODE_MAX_RETRIES;
       else process.env.OPENCODE_MAX_RETRIES = prevRetries;
     }
-  });
+  }, 45_000);
 
   // P3-003: fallback is rejected unless the generation has failed
   it('#8 fallback is rejected for a non-failed generation', async () => {

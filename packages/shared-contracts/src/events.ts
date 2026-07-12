@@ -3,7 +3,7 @@
  *
  * The 12 PRD FR-005 event types are the core generation-lifecycle events.
  * The adapter events (architecture §6.2) are emitted by the OpenJiuwen /
- * OpenCode / sandbox / mock runtime boundaries and normalized into the same
+ * OpenCode / sandbox / generated runtime boundaries and normalized into the same
  * stream.
  */
 

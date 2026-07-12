@@ -2,19 +2,17 @@ import { Injectable } from '@nestjs/common';
 import type { AgentSpec, WorkflowSpec } from '@agent-builder/shared-contracts';
 import type { CodeGenerationEngine, EngineName, GenerationContext, GenerationResult, GenerationCallbacks } from './engine';
 import { TemplateEngine } from './template-engine';
-import { MockEngine } from './mock-engine';
 import { OpenCodeEngine } from './opencode-engine';
 
 /**
  * Selects a CodeGenerationEngine and delegates (architecture §5.5).
- * Default: TemplateEngine (deterministic P0 fallback). 'opencode' / 'mock'
- * are configurable (P0 plan §8.4 checkpoint #4).
+ * Default: TemplateEngine (deterministic local generator). 'opencode' runs the
+ * real OpenCode path.
  */
 @Injectable()
 export class CodeGenerationService {
   constructor(
     private readonly templateEngine: TemplateEngine,
-    private readonly mockEngine: MockEngine,
     private readonly opencodeEngine: OpenCodeEngine,
   ) {}
 
@@ -22,8 +20,6 @@ export class CodeGenerationService {
     switch (name) {
       case 'opencode':
         return this.opencodeEngine;
-      case 'mock':
-        return this.mockEngine;
       case 'template':
       default:
         return this.templateEngine;

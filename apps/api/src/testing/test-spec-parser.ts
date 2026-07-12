@@ -1,19 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { GenerationType, type AgentSpec, type WorkflowSpec } from '@agent-builder/shared-contracts';
-import type { LlmSpecParser } from './llm-spec-parser';
+import type { LlmSpecParser } from '../spec/llm-spec-parser';
 
-/**
- * Deterministic stand-in for a real LLM (Phase 9 §5.3 / §7 minimum slice).
- *
- * Used when SPEC_LLM_PROVIDER=mock so the full parse → persist → generate →
- * test pipeline can be exercised without a key or network. Returns a fixed,
- * valid, generic Spec per type — deliberately NOT the tarot / presales demo
- * specs, so non-example prompts never leak demo-specific language downstream
- * (Phase 12 §1 #6/#7).
- */
+/** Deterministic parser used only by tests. */
 @Injectable()
-export class MockLlmSpecParser implements LlmSpecParser {
-  readonly provider = 'mock' as const;
+export class TestSpecParser implements LlmSpecParser {
+  readonly provider = 'test' as const;
   readonly model = null;
 
   async parse(prompt: string, type: GenerationType): Promise<AgentSpec | WorkflowSpec> {

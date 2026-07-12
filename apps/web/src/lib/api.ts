@@ -6,6 +6,7 @@ import type {
   FileContentResponse,
   RunnerResult,
   CreateExportResponse,
+  GenerationEvent,
 } from '@agent-builder/shared-contracts';
 
 /** REST client for the Agent Builder backend (proxied via next.config rewrites). */
@@ -34,6 +35,10 @@ export function createGeneration(req: CreateGenerationRequest): Promise<CreateGe
 
 export function getGeneration(id: string): Promise<GenerationDto> {
   return jsonFetch(`/api/generations/${id}`);
+}
+
+export function getGenerationEvents(id: string, afterSequence = 0): Promise<GenerationEvent[]> {
+  return jsonFetch(`/api/generations/${id}/events/history?after=${afterSequence}`);
 }
 
 export function getFileTree(id: string): Promise<FileTreeNode[]> {

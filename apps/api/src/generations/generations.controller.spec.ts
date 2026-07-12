@@ -82,4 +82,30 @@ describe('GenerationsController (Phase 1+6 — GET + SSE)', () => {
 
     sub.unsubscribe();
   });
+
+  it('GET /api/generations/:id/events/history returns persisted events after a cursor', async () => {
+    const gen = await genService.createGeneration({
+      type: GenerationType.Agent,
+      prompt: '会议纪要 Agent',
+      mode: 'auto',
+      model: 'default',
+    });
+    await eventService.record({
+      generation_id: gen.id,
+      type: EventType.Thought,
+      message: '开始分析',
+      payload: {},
+    });
+
+    const all = await request(httpServer)
+      .get(`/api/generations/${gen.id}/events/history`)
+      .expect(200);
+    expect(all.body.map((e: { sequence: number }) => e.sequence)).toEqual([1, 2]);
+
+    const after = await request(httpServer)
+      .get(`/api/generations/${gen.id}/events/history?after=1`)
+      .expect(200);
+    expect(after.body).toHaveLength(1);
+    expect(after.body[0].message).toBe('开始分析');
+  });
 });

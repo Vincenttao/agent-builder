@@ -2,7 +2,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { GenerationEvent, GenerationStatus } from '@agent-builder/shared-contracts';
-import { getGeneration } from './api';
+import { getGeneration, getGenerationEvents } from './api';
+
+function mergeEvents(prev: GenerationEvent[], incoming: GenerationEvent[]): GenerationEvent[] {
+  if (incoming.length === 0) return prev;
+  const byId = new Map(prev.map((event) => [event.id, event]));
+  for (const event of incoming) {
+    byId.set(event.id, event);
+  }
+  return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
+}
+
+function isTerminalStatus(status: string | null | undefined): boolean {
+  return status === 'completed' || status === 'failed';
+}
 
 /**
  * SSE hook: subscribes to /api/generations/{id}/events, accumulates events in
@@ -15,11 +28,16 @@ export function useGenerationEvents(generationId: string | null) {
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
+  const latestSequenceRef = useRef(0);
 
   useEffect(() => {
     if (!generationId) return;
     const genId = generationId;
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    latestSequenceRef.current = 0;
+    setEvents([]);
+    setStatus(null);
 
     // Seed status from REST, then open the SSE stream.
     getGeneration(genId)
@@ -27,6 +45,34 @@ export function useGenerationEvents(generationId: string | null) {
         if (!cancelled) setStatus(g.status as GenerationStatus);
       })
       .catch(() => undefined);
+
+    async function syncFromRest() {
+      if (cancelled) return;
+      try {
+        const [history, generation] = await Promise.all([
+          getGenerationEvents(genId, latestSequenceRef.current),
+          getGeneration(genId),
+        ]);
+        if (cancelled) return;
+        setEvents((prev) => {
+          const merged = mergeEvents(prev, history);
+          latestSequenceRef.current = merged.reduce((max, event) => Math.max(max, event.sequence), 0);
+          return merged;
+        });
+        setStatus(generation.status as GenerationStatus);
+        if (isTerminalStatus(generation.status)) {
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
+          sourceRef.current?.close();
+          setConnected(true);
+          setReconnecting(false);
+        }
+      } catch {
+        // SSE remains the primary live channel; REST sync is a best-effort catch-up.
+      }
+    }
 
     const open = () => {
       const source = new EventSource(`/api/generations/${genId}/events`);
@@ -74,7 +120,9 @@ export function useGenerationEvents(generationId: string | null) {
         const evt = JSON.parse(raw) as GenerationEvent;
         setEvents((prev) => {
           if (prev.some((e) => e.id === evt.id)) return prev;
-          return [...prev, evt].sort((a, b) => a.sequence - b.sequence);
+          const merged = mergeEvents(prev, [evt]);
+          latestSequenceRef.current = Math.max(latestSequenceRef.current, evt.sequence);
+          return merged;
         });
         // Derive status from terminal events (D-017: also handle error events).
         if (
@@ -93,8 +141,13 @@ export function useGenerationEvents(generationId: string | null) {
     }
 
     open();
+    void syncFromRest();
+    pollTimer = setInterval(() => {
+      void syncFromRest();
+    }, 2_000);
     return () => {
       cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
       sourceRef.current?.close();
     };
   }, [generationId]);

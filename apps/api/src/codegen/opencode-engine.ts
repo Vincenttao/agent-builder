@@ -98,7 +98,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     context: GenerationContext,
     callbacks?: GenerationCallbacks,
   ): Promise<GenerationResult> {
-    callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动', { mock: true });
+    callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动');
 
     // prompt written to .agent_builder/prompt.md (runtime_and_sandbox §10.1).
     const promptDir = path.join(context.projectPath, '.agent_builder');
@@ -112,7 +112,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
         callbacks?.onEvent?.(
           EventType.OpencodeFileChanged,
           `OpenCode 写入文件 ${file.path}`,
-          { path: file.path, mock: true },
+          { path: file.path },
         );
       },
     });
@@ -120,7 +120,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     callbacks?.onEvent?.(
       EventType.OpencodeFinished,
       'OpenCode 会话结束',
-      { mock: true, file_count: result.files.length },
+      { file_count: result.files.length },
     );
 
     return { ...result, engine: 'opencode' };
@@ -132,7 +132,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     context: GenerationContext,
     callbacks?: GenerationCallbacks,
   ): Promise<GenerationResult> {
-    callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动', { mock: false });
+    callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动');
 
     // Write the prompt for opencode to read.
     const promptDir = path.join(context.projectPath, '.agent_builder');
@@ -155,7 +155,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const onLine = (stream: string) => (line: string) => {
       const msg = this.parseOpencodeLog(line);
       if (msg) {
-        callbacks?.onEvent?.(EventType.Thought, msg, { stream, mock: false });
+        callbacks?.onEvent?.(EventType.Thought, msg, { stream });
       }
       this.logger.debug(`[opencode ${stream}] ${line.slice(0, 200)}`);
     };
@@ -180,27 +180,31 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     // Scan the generated file tree, excluding our own .agent_builder/ prompt.
     const files = this.scanProjectFiles(context.projectPath);
 
-    // Check for fatal errors after scanning: only fail if sandbox status is
-    // non-success, OR if stderr has errors AND no files were generated (opencode
-    // may emit non-fatal ERROR log lines from plugins etc. — those are ok if
-    // files were produced).
-    let stderrText = '';
-    try { stderrText = fs.readFileSync(result.stderrPath, 'utf8'); } catch { /* ok */ }
-    const stderrErrors = this.extractOpencodeErrors(stderrText);
+    // Check for fatal errors after scanning. A successful opencode run may keep
+    // intermediate pytest/import failures in stderr after it has fixed them, so
+    // only inspect stderr when the run failed or produced no usable files.
     const noFilesGenerated = files.length === 0;
 
     if (result.status !== 'success') {
+      let stderrText = '';
+      try { stderrText = fs.readFileSync(result.stderrPath, 'utf8'); } catch { /* ok */ }
+      const stderrErrors = this.extractOpencodeErrors(stderrText);
+      if (stderrErrors) this.logger.warn(`opencode stderr: ${stderrErrors}`);
       throw new AgentBuilderError(
         ErrorCode.CodeGenerationFailed,
-        `OpenCode 执行失败 (exit ${result.exitCode})`,
+        `OpenCode 执行失败 (exit ${result.exitCode})${stderrErrors ? `：${stderrErrors}` : ''}`,
         { jobId: result.jobId, stdoutPath: result.stdoutPath },
       );
     }
 
-    if (noFilesGenerated && stderrErrors) {
+    if (noFilesGenerated) {
+      let stderrText = '';
+      try { stderrText = fs.readFileSync(result.stderrPath, 'utf8'); } catch { /* ok */ }
+      const stderrErrors = this.extractOpencodeErrors(stderrText);
+      if (stderrErrors) this.logger.warn(`opencode stderr: ${stderrErrors}`);
       throw new AgentBuilderError(
         ErrorCode.CodeGenerationFailed,
-        `OpenCode 错误：${stderrErrors}`,
+        `OpenCode 没有生成可用文件${stderrErrors ? `：${stderrErrors}` : ''}`,
         { jobId: result.jobId, stdoutPath: result.stdoutPath },
       );
     }
@@ -209,14 +213,14 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       callbacks?.onEvent?.(
         EventType.OpencodeFileChanged,
         `OpenCode 写入文件 ${file.path}`,
-        { path: file.path, mock: result.mock },
+        { path: file.path },
       );
     }
 
     callbacks?.onEvent?.(
       EventType.OpencodeFinished,
       'OpenCode 会话结束',
-      { mock: result.mock, file_count: files.length },
+      { file_count: files.length },
     );
 
     return {
@@ -224,14 +228,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       projectPath: context.projectPath,
       files,
       warnings: [],
-      mock: result.mock,
     };
   }
 
   /** Recursively scan the project directory, returning project-relative paths. */
   private scanProjectFiles(projectPath: string): GeneratedFile[] {
     const files: GeneratedFile[] = [];
-    const excludeDirs = new Set(['.agent_builder', '.opencode']);
+    const excludeDirs = new Set(['.agent_builder', '.opencode', '.pytest_cache', '__pycache__']);
 
     const walk = (dir: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -242,6 +245,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
         if (entry.isDirectory()) {
           walk(fullPath);
         } else {
+          if (entry.name.endsWith('.pyc')) continue;
           const rel = path.relative(projectPath, fullPath).split(path.sep).join('/');
           const stat = fs.statSync(fullPath);
           files.push({ path: rel, size: stat.size });
@@ -267,6 +271,35 @@ export class OpenCodeEngine implements CodeGenerationEngine {
    * if the line is noise.
    */
   private parseOpencodeLog(line: string): string | null {
+    const raw = line.trim();
+    if (!raw) return null;
+
+    // ── opencode v1 pretty output (human-readable lines, no message= field).
+    // v1 emits "→ Read <path>", "← Edit <path>", "← Write <path>",
+    // "All N tests pass.", "> build · <model>", and Python tracebacks. Without
+    // this branch a ~180s real run emits zero progress events, so the UI looks
+    // stuck at the sandbox-started line for the whole job.
+    const v1Action = raw.match(/^[←→]\s*(Read|Write|Edit|Bash|Grep|Glob|Task|TodoWrite)\b\s*(.*)/);
+    if (v1Action) {
+      const action = v1Action[1];
+      const target = v1Action[2].trim();
+      const verb: Record<string, string> = {
+        Read: '读取', Write: '创建', Edit: '编辑', Bash: '执行',
+        Grep: '搜索', Glob: '查找', Task: '子任务', TodoWrite: '更新待办',
+      };
+      return target ? `${verb[action] ?? action} ${this.shortPath(target)}` : (verb[action] ?? action);
+    }
+    const buildMatch = raw.match(/^>\s*build\s*[·-]\s*(.+)/);
+    if (buildMatch) return `开始构建（${buildMatch[1].trim()}）`;
+    const testsPass = raw.match(/^All\s+(\d+)\s+tests?\s+pass/i);
+    if (testsPass) return `测试通过（${testsPass[1]}）`;
+    if (/^All\s+tests?\s+pass/i.test(raw)) return '测试通过';
+    // Python traceback / runtime errors (ModuleNotFoundError, ValueError, …).
+    if (/^(Traceback|[A-Za-z_]+Error)/.test(raw)) return `⚠️ ${raw.slice(0, 150)}`;
+    // Skip unified-diff hunks and other v1 noise.
+    if (/^([-+]|@@)/.test(raw)) return null;
+
+    // ── opencode v0 structured log (message= key=value) ──────────────
     const get = (key: string): string | undefined => {
       const m = line.match(new RegExp(`${key}=([^ ]+)`));
       return m ? m[1] : undefined;
@@ -340,7 +373,6 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       }
       return null;
     }
-    this.logger.warn(`opencode stderr: ${lines.join(' | ')}`);
     // Return the first meaningful error line
     const first = lines.find((l) => l.length > 10);
     return first ? first.trim().slice(0, 200) : lines[0].trim().slice(0, 200);
@@ -421,7 +453,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           test_command: 'pytest tests/test_agent_smoke.py -q',
           run_command: 'python src/main.py',
           example_input: '请查询年假政策',
-          runtime: { framework: 'openjiuwen', mode: 'mock-compatible' },
+          runtime: { framework: 'openjiuwen', mode: 'real' },
         }
       : {
           schema_version: '1.0',
@@ -430,7 +462,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           test_command: 'pytest tests/test_workflow_smoke.py -q',
           run_command: 'python -m src.main',
           example_input: { requirement_doc: '示例需求文档内容' },
-          runtime: { framework: 'openjiuwen', mode: 'mock-compatible' },
+          runtime: { framework: 'openjiuwen', mode: 'real' },
         };
     const lines = [
       `# 生成 OpenJiuwen ${isAgent ? 'Agent' : 'Workflow'} 工程`,
@@ -443,7 +475,9 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '- 不得使用 LangGraph / CrewAI / Dify 等非 OpenJiuwen 框架。',
       '- 不得硬编码任何 API key。',
       '- 不要依赖联网安装才能通过 smoke test；测试必须能在离线 sandbox 内通过。',
-      '- 如果需要外部 LLM SDK，运行时代码只能通过环境变量读取 key，smoke test 必须使用 mock/fake provider。',
+      '- smoke test 不能伪造 Agent/Workflow 最终效果；必须直接调用平台入口函数并校验真实业务输出。',
+      '- 平台会把 pytest 作为硬性 smoke gate；`python -m pip install -e . --no-build-isolation` 只是打包质量检查，不应成为测试通过的必要前提。',
+      '- 如果生成 pyproject.toml，必须使用标准可安装配置；build-backend 使用 "setuptools.build_meta"，不要使用 "setuptools.backends._legacy:_Backend"。',
       '',
       '必须创建以下文件，路径必须完全一致：',
       ...requiredFiles.map((file) => `- ${file}`),
@@ -453,11 +487,18 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       JSON.stringify(manifest, null, 2),
       '```',
       '',
+      '平台运行入口要求：',
+      isAgent
+        ? '- `src/agents/agent.py` 必须暴露 `run_agent(message: str) -> str | dict`，由该函数执行必要工具 handler 并返回最终用户可见回复；smoke test 必须直接覆盖 `run_agent()`。'
+        : '- `src/workflows/workflow.py` 必须暴露 `run_workflow(inputs: dict) -> dict`，由该函数执行节点逻辑并返回最终输出；smoke test 必须直接覆盖 `run_workflow()`。',
+      '- 入口函数必须离线可运行，不得依赖真实 API key 或联网调用，也不得返回占位/模拟文案。',
+      '',
       'smoke test 要求：',
       `- 必须包含 ${isAgent ? 'tests/test_agent_smoke.py' : 'tests/test_workflow_smoke.py'}。`,
       '- pytest tests/ -q 必须通过。',
       '- 测试不得访问真实网络，不得要求真实 API key。',
       '- 测试至少校验 manifest、入口文件、OpenJiuwen adapter、Spec 中的工具/节点配置。',
+      '- 推荐自检命令：python -m pytest tests/ -q。若额外验证打包安装，请使用 python -m pip install -e . --no-build-isolation，但安装失败应先修正 pyproject.toml。',
       '',
       'Spec（JSON）：',
       '```json',

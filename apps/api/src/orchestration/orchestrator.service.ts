@@ -184,11 +184,10 @@ export class OrchestratorService {
     }
 
     const engineName = this.effectiveEngineName(generationId);
-    const mock = engineName !== 'opencode' || process.env.OPENCODE_REQUIRE_REAL !== 'true';
 
     const result = await this.codegen.generate(
       spec,
-      { generationId, versionId, projectPath, mock },
+      { generationId, versionId, projectPath },
       {
         onFile: (f) =>
           this.eventService.record({
@@ -223,7 +222,7 @@ export class OrchestratorService {
       project_path: projectPath,
       file_count: result.files.length,
       test_status: TestStatus.Skipped,
-      mock_mode: mock,
+      mock_mode: false,
     });
 
     await this.eventService.record({
@@ -276,7 +275,9 @@ export class OrchestratorService {
       return { passed: true, output: '' };
     }
 
-    // opencode projects need pip install before tests can run.
+    // Packaging is useful for quality feedback, but it is not the smoke gate.
+    // OpenCode projects can be valid runner/demo outputs even when editable
+    // installation fails because pyproject packaging metadata is imperfect.
     if (this.effectiveEngineName(generationId) === 'opencode') {
       const installResult = await this.sandbox.run({
         generationId,
@@ -287,22 +288,19 @@ export class OrchestratorService {
         timeoutSeconds: 60,
       });
       if (installResult.status !== 'success') {
-        const latestVersion = this.latestVersion(generationId);
-        if (latestVersion) {
-          this.versionRepo.updateTestStatus(latestVersion.id, TestStatus.Failed);
-        }
         const installOutput = this.readRunOutput(installResult.stdoutPath, installResult.stderrPath);
         await this.eventService.record({
           generation_id: generationId,
           type: EventType.Thought,
-          message: `依赖安装失败 (exit ${installResult.exitCode})`,
-          payload: { exit_code: installResult.exitCode, run_id: installResult.jobId },
+          message: `打包安装检查未通过，继续执行 smoke test (exit ${installResult.exitCode})`,
+          payload: {
+            exit_code: installResult.exitCode,
+            run_id: installResult.jobId,
+            packaging_warning: true,
+            output: installOutput,
+          },
           run_id: installResult.jobId,
         });
-        return {
-          passed: false,
-          output: `依赖安装失败 (exit ${installResult.exitCode})\n${installOutput}`,
-        };
       }
     }
 
@@ -319,8 +317,15 @@ export class OrchestratorService {
       jobType: JobType.SmokeTest,
       command: this.buildSmokeCommand(projectPath),
       workspacePath: projectPath,
-      runtime: SandboxRuntime.Mock,
+      runtime: SandboxRuntime.Docker,
       timeoutSeconds: 90,
+      // opencode generates either `from src.x import` (needs project root on
+      // path) or flat `from x import` (needs src/ on path). Put both on
+      // PYTHONPATH so the smoke test resolves imports the way opencode verified
+      // (it ran `PYTHONPATH=src pytest`). Otherwise flat-import projects fail
+      // the smoke gate with ModuleNotFoundError even though opencode's own run
+      // passed.
+      envAllowlist: { PYTHONPATH: `${projectPath}${path.delimiter}${path.join(projectPath, 'src')}` },
     });
 
     const passed = result.status === 'success';
@@ -339,7 +344,7 @@ export class OrchestratorService {
       generation_id: generationId,
       type: EventType.TestFinished,
       message: passed ? 'smoke test 通过' : 'smoke test 失败',
-      payload: { passed, exit_code: result.exitCode, mock: result.mock, run_id: result.jobId },
+      payload: { passed, exit_code: result.exitCode, run_id: result.jobId },
       run_id: result.jobId,
     });
 
@@ -367,7 +372,7 @@ export class OrchestratorService {
         generation_id: generationId,
         type: EventType.Output,
         message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件）`,
-        payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: result.mock },
+        payload: { version_id: latestVersion.id, file_count: latestVersion.file_count },
       });
     }
 
@@ -420,8 +425,8 @@ export class OrchestratorService {
   /**
    * Re-run a FAILED generation with the deterministic TemplateEngine so a demo
    * can still produce source / run / export when real OpenCode fails. The
-   * persisted Spec is reused (no re-parse); the new version is mock_mode and
-   * clearly flagged as a fallback, never an OpenCode success.
+   * persisted Spec is reused and the new version is clearly flagged as a
+   * fallback, never an OpenCode success.
    */
   async fallback(generationId: string): Promise<{ generation_id: string; version_id: string | null; version_label: string; retry_index: number }> {
     const gen = this.genService.getById(generationId);
@@ -602,7 +607,7 @@ export class OrchestratorService {
    * pipeline run will actually use. */
   private configuredEngineName(): EngineName {
     const e = process.env.CODEGEN_ENGINE ?? 'template';
-    return e === 'opencode' || e === 'mock' ? e : 'template';
+    return e === 'opencode' ? e : 'template';
   }
 
   /** The engine a pipeline run will actually use — a forced override (P3-003

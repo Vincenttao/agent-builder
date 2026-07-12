@@ -15,7 +15,6 @@ describe('WorkflowRunPanel (Phase 7 §11.2 #4)', () => {
           { node_id: 'start', name: 'Start', status: 'success' },
           { node_id: 'end', name: 'End', status: 'success' },
         ],
-        mock: true,
       }),
     });
     vi.stubGlobal('fetch', fetchMock);

@@ -13,8 +13,8 @@ import type { AgentSpec, WorkflowSpec, GenerationType } from '@agent-builder/sha
  */
 export interface LlmSpecParser {
   /** Stable provider id, persisted on generation_specs for observability. */
-  readonly provider: 'mock' | 'openai-compatible';
-  /** Model name used (null for the mock provider). */
+  readonly provider: 'test' | 'openai-compatible';
+  /** Model name used. */
   readonly model: string | null;
   parse(prompt: string, type: GenerationType): Promise<AgentSpec | WorkflowSpec>;
 }

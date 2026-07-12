@@ -1,4 +1,4 @@
-"""Model configuration loader (P0 mock mode). Same contract as the agent runner."""
+"""Model configuration loader. Same contract as the agent runner."""
 from __future__ import annotations
 
 import json
@@ -16,5 +16,4 @@ def load_model_config(config_path: str | None = None) -> Dict[str, Any]:
         config["api_key"] = os.environ["OPENJIUWEN_API_KEY"]
     if os.environ.get("OPENJIUWEN_BASE_URL"):
         config["base_url"] = os.environ["OPENJIUWEN_BASE_URL"]
-    config["mock"] = os.environ.get("MOCK_OPENJIUWEN", "true").lower() != "false"
     return config

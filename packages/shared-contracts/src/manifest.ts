@@ -21,6 +21,6 @@ export interface AgentBuilderManifest {
   /** Runtime metadata. */
   runtime: {
     framework: 'openjiuwen';
-    mode: 'mock-compatible' | 'real';
+    mode: 'real';
   };
 }

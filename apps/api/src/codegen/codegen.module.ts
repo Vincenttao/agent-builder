@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { TemplateEngine } from './template-engine';
-import { MockEngine } from './mock-engine';
 import { OpenCodeEngine } from './opencode-engine';
 import { CodeGenerationService } from './codegen.service';
 import { SandboxModule } from '../sandbox/sandbox.module';
@@ -10,7 +9,6 @@ import { SandboxService } from '../sandbox/sandbox.service';
   imports: [SandboxModule],
   providers: [
     TemplateEngine,
-    MockEngine,
     {
       // requireReal + allowFallback default from env; OpenCodeEngine also takes
       // TemplateEngine + SandboxService. P3: OPENCODE_ALLOW_FALLBACK=false makes
@@ -27,6 +25,6 @@ import { SandboxService } from '../sandbox/sandbox.service';
     },
     CodeGenerationService,
   ],
-  exports: [CodeGenerationService, TemplateEngine, MockEngine, OpenCodeEngine],
+  exports: [CodeGenerationService, TemplateEngine, OpenCodeEngine],
 })
 export class CodeGenerationModule {}

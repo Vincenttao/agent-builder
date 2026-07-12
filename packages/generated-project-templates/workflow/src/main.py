@@ -1,19 +1,17 @@
 """Entry point: run the workflow with a requirement doc, print structured JSON.
 
 Usage: python src/main.py "<requirement doc>"
-P0 runs in mock mode (MOCK_OPENJIUWEN=true) so no key is required.
 """
 from __future__ import annotations
 
 import json
 import sys
 
-from src.workflows.workflow import build_workflow
+from src.workflows.workflow import run_workflow
 
 
 def run(inputs):
-    workflow = build_workflow()
-    return workflow.run(inputs)
+    return run_workflow(inputs)
 
 
 def main(argv: list[str] | None = None) -> int:

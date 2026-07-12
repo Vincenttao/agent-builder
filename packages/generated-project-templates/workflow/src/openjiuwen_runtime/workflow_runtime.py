@@ -1,10 +1,7 @@
-"""Mock OpenJiuwen workflow runtime (P0).
+"""OpenJiuwen workflow adapter.
 
-Executes the Workflow node graph in edge-defined order, threading a context
-dict through each node, recording per-node status/input/output/duration, and
-producing the final output. Real OpenJiuwen Workflow/Component/Runner APIs bind
-here after the API inventory (architecture §6.3) — the generated workflow.py
-only depends on this adapter.
+Executes the generated Workflow node graph by calling component handlers from
+``src/components``. Missing component implementations fail the run.
 """
 from __future__ import annotations
 
@@ -14,7 +11,6 @@ from typing import Any, Dict, List
 
 
 def _load_component(node_id: str):
-    """Load a node's `handle(context) -> output` from src/components/<id>.py."""
     try:
         module = importlib.import_module(f"src.components.{node_id}")
         return getattr(module, "handle", None)
@@ -22,11 +18,7 @@ def _load_component(node_id: str):
         return None
 
 
-def _default_handler(context: Dict[str, Any]) -> Dict[str, Any]:
-    return {}
-
-
-class MockWorkflow:
+class WorkflowRunner:
     def __init__(self, spec: Dict[str, Any]):
         self.spec = spec
         self.nodes = {n["id"]: n for n in spec.get("nodes", [])}
@@ -57,38 +49,30 @@ class MockWorkflow:
                 if node["type"] in ("start", "end"):
                     output: Dict[str, Any] = dict(context)
                 else:
-                    handler = _load_component(node_id) or _default_handler
+                    handler = _load_component(node_id)
+                    if handler is None:
+                        raise RuntimeError(f"Component '{node_id}' has no implementation in src/components/{node_id}.py")
                     output = handler(context) or {}
                 context.update(output)
                 entry["status"] = "success"
                 entry["output"] = output
-            except Exception as e:  # node failure -> workflow failed, fail-fast
+            except Exception as e:
                 entry["status"] = "failed"
                 entry["error"] = str(e)
                 entry["duration_ms"] = int((time.time() - started) * 1000)
                 node_results.append(entry)
-                return {
-                    "status": "failed",
-                    "node_results": node_results,
-                    "output": None,
-                    "mock": True,
-                }
+                return {"status": "failed", "node_results": node_results, "output": None}
             entry["duration_ms"] = int((time.time() - started) * 1000)
             node_results.append(entry)
 
-        return {
-            "status": "success",
-            "node_results": node_results,
-            "output": context,
-            "mock": True,
-        }
+        return {"status": "success", "node_results": node_results, "output": context}
 
 
 class WorkflowAdapter:
-    """OpenJiuwen Workflow adapter (mock). Stable interface — real SDK binds later."""
+    """OpenJiuwen Workflow adapter."""
 
-    def create_workflow(self, spec: Dict[str, Any]) -> MockWorkflow:
-        return MockWorkflow(spec)
+    def create_workflow(self, spec: Dict[str, Any]) -> WorkflowRunner:
+        return WorkflowRunner(spec)
 
-    def run(self, handle: MockWorkflow, inputs: Dict[str, Any], context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def run(self, handle: WorkflowRunner, inputs: Dict[str, Any], context: Dict[str, Any] | None = None) -> Dict[str, Any]:
         return handle.run(inputs)

@@ -1,8 +1,4 @@
-"""Model configuration loader (P0 mock mode).
-
-Real OpenJiuwen model config binds here after the API inventory. P0 reads
-config/agent_llm_config.json and honours MOCK_OPENJIUWEN so no key is needed.
-"""
+"""Model configuration loader."""
 from __future__ import annotations
 
 import json
@@ -21,5 +17,4 @@ def load_model_config(config_path: str | None = None) -> Dict[str, Any]:
         config["api_key"] = os.environ["OPENJIUWEN_API_KEY"]
     if os.environ.get("OPENJIUWEN_BASE_URL"):
         config["base_url"] = os.environ["OPENJIUWEN_BASE_URL"]
-    config["mock"] = os.environ.get("MOCK_OPENJIUWEN", "true").lower() != "false"
     return config

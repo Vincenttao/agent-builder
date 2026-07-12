@@ -35,7 +35,7 @@ describe('SpecRepository (Phase 9 — spec persistence)', () => {
       generation_id: 'gen_1',
       spec: agentSpec,
       parser_mode: 'hybrid',
-      provider: 'mock',
+      provider: 'test',
       model: null,
       prompt_hash: 'h',
       validation_status: 'valid',
@@ -44,7 +44,7 @@ describe('SpecRepository (Phase 9 — spec persistence)', () => {
     expect(got).not.toBeNull();
     expect(got!.spec.name).toBe('通用智能体');
     expect(got!.parser_mode).toBe('hybrid');
-    expect(got!.provider).toBe('mock');
+    expect(got!.provider).toBe('test');
     expect(got!.validation_status).toBe('valid');
   });
 
@@ -54,7 +54,7 @@ describe('SpecRepository (Phase 9 — spec persistence)', () => {
       generation_id: 'gen_2',
       spec: agentSpec,
       parser_mode: 'hybrid',
-      provider: 'mock',
+      provider: 'test',
       model: null,
       prompt_hash: 'h1',
       validation_status: 'valid',
