@@ -51,6 +51,11 @@ export class SandboxService implements OnApplicationShutdown {
     return { runner: 'mock', mock: true };
   }
 
+  /** P3-008: whether a container runtime (docker/podman) is available. */
+  isDockerAvailable(): boolean {
+    return this.dockerRunner.isAvailable();
+  }
+
   async run(req: SandboxRunRequest): Promise<SandboxRunResult> {
     // #7 — forbidden commands never reach a container/subprocess.
     const check = isCommandAllowed(req.command);

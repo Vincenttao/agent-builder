@@ -1,5 +1,6 @@
 import { PromptComposer } from '@/components/prompt/PromptComposer';
 import { TaskHistory } from '@/components/history/TaskHistory';
+import { Diagnostics } from '@/components/Diagnostics';
 
 /**
  * Home page (PRD §6.1). The workbench-first entry: a prompt composer that
@@ -46,12 +47,7 @@ export default function HomePage() {
               ))}
             </ol>
             <div className="mt-5 border-t border-zinc-200 pt-4">
-              <p className="section-label">Runtime</p>
-              <div className="mt-3 grid gap-2 text-xs">
-                <StatusItem label="LLM Parser" value="Auto" tone="bg-cyan-500" />
-                <StatusItem label="Code Engine" value="OpenCode" tone="bg-brand" />
-                <StatusItem label="Sandbox" value="Docker / Mock" tone="bg-amber-500" />
-              </div>
+              <Diagnostics />
             </div>
           </aside>
 
@@ -61,17 +57,5 @@ export default function HomePage() {
         <TaskHistory />
       </div>
     </main>
-  );
-}
-
-function StatusItem({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-      <span className="flex items-center gap-2 text-zinc-600">
-        <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
-        {label}
-      </span>
-      <span className="font-medium text-zinc-800">{value}</span>
-    </div>
   );
 }

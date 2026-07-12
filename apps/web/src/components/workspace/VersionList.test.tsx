@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { VersionList } from './VersionList';
 import { TestStatus } from '@agent-builder/shared-contracts';
 import type { ProjectVersion } from '@agent-builder/shared-contracts';
