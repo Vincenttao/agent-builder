@@ -20,6 +20,10 @@ RUN pip install --no-cache-dir pytest setuptools wheel openai
 COPY services/python-runner /tmp/python-runner
 RUN pip install --no-cache-dir /tmp/python-runner && rm -rf /tmp/python-runner
 
+# openjiuwen_runtime — ReAct Agent loop adapter (pre-built, not generated)
+COPY services/openjiuwen-runtime /tmp/openjiuwen-runtime
+RUN pip install --no-cache-dir /tmp/openjiuwen-runtime && rm -rf /tmp/openjiuwen-runtime
+
 # opencode — install via official installer, then copy to /usr/local/bin
 # so it survives tmpfs mounts on /root.
 RUN curl -fsSL https://opencode.ai/install | bash && \
