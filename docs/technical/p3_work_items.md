@@ -1,10 +1,27 @@
 # Agent Builder P3 工作点
 
-版本：v0.2 | 日期：2026-07-12
+版本：v1.0 | 日期：2026-07-12
 
 来源：对照当前代码、P3 原始验收记录、真实 LLM + 真实 OpenCode 手动验证结果。
 
 ## 一、当前结论
+
+**P3 全部完成。** 三个里程碑均已达成：
+
+- **M1 真实生成安全闭环**：P3-001 / P3-002 / P3-004。
+- **M2 演示恢复闭环**：P3-003 fallback endpoint + UI、P3-005 manifest 消费、P3-006 Workflow fallback 状态。
+- **M3 可重复演示**：P3-007 真实链路 E2E、P3-008 诊断页、P3-009 版本/Diff/日志 UI、P3-010 runbook。
+
+真实链路一键验证（`npm run test:e2e:real`）输出：
+
+```text
+status=completed, engine=opencode, smoke_test=passed, mock_mode=false,
+file_count=19, entrypoint=src/agents/agent.py, test_command=pytest tests/test_agent_smoke.py -q
+```
+
+失败可恢复：UI 可一键切换模板引擎、修复重试、激活历史版本，并查看真实运行日志。
+
+历史背景（已不成立）：
 
 P3 原始记录中的关键失败：
 
@@ -136,14 +153,14 @@ manifest 示例：
 |---|---|---|---|
 | P3-001 修复真实 OpenCode sandbox allowlist | ✅ 完成 | `...` 不再触发路径逃逸误判；regex `/(?:^\|/)\\.\\.(?:$\|/)/`；有回归测试（含 opencode model path、ellipsis、路径逃逸拒绝） | — |
 | P3-002 修复 OpenCode prompt 传递方式 | ✅ 完成 | 默认 v1；v0 兼容前缀已加入 allowlist；instruction 简化为文件读取 | — |
-| P3-003 真实 OpenCode fallback 策略 | 部分完成 | OpenCode 不可用时可回退 TemplateEngine，并记录 fallback 事件 | 真实 OpenCode 失败后 UI 仍只有 repair，没有一键 fallback |
+| P3-003 真实 OpenCode fallback 策略 | ✅ 完成 | `POST /api/generations/:id/fallback` 强制 TemplateEngine 重生成（forcedEngines，pipeline 结束清理）；记录原始失败原因与 fallback 事件；ErrorPanel 一键"切换模板引擎"按钮；新版本 `mock_mode=true` 并标注 fallback | — |
 | P3-004 修复 smoke test 失败误晋级 | ✅ 完成 | `promoteVersion()` 仅在 `passed && latestVersion` 时调用；失败版本不 promote | — |
-| P3-005 完成 manifest 契约消费 | 部分完成 | TemplateEngine 和 OpenCode prompt 都要求生成 manifest；runner 会尝试读取 manifest 文件 | runner 没有实际使用 `entrypoint/test_command/run_command/example_input`；UI 未展示 runtime、entrypoint、example input |
-| P3-006 真实运行状态语义 | 部分完成 | Python runner fallback 返回 `status: "fallback"`、`mode: "mock_fallback"`；Agent UI 有 fallback 提示 | Workflow UI 未显示 fallback 状态；缺专项 E2E 覆盖 |
-| P3-007 真实链路 E2E | 未完成 | 手动真实端到端已验证 | 缺可一键触发、无密钥自动 skip、输出报告的 `real-opencode` E2E |
-| P3-008 演示诊断页 | 未完成 | 基础 `/health` 存在 | 缺 `/health/deep` 或 `/demo/diagnostics`；首页无 LLM/OpenCode/Docker/Python runner 诊断 |
-| P3-009 版本、Diff、日志 UI | 部分完成 | 后端 versions/diff/runs/log API 已存在，前端 API helper 已存在；CompletionSummary 可显示 engine/fallback | 工作区未消费 versions/diff/runs/log；`CompletionSummary` 仍传 `version={null}`；ErrorPanel 只展示事件摘要，不展示真实 run log 内容 |
-| P3-010 内部演示 runbook | 未完成 | 本文档记录了当前状态 | 缺 `docs/technical/p3_demo_runbook.md`，缺标准 prompt、恢复命令和截图 checklist |
+| P3-005 完成 manifest 契约消费 | ✅ 完成 | `GET /api/generations/:id/manifest`；smoke test 用 manifest `test_command` 安全映射到 allowlist argv；Agent/Workflow 测试台预填 `example_input`；runner 用 `entrypoint` 定位 spec、用 `example_input` 作默认输入 | — |
+| P3-006 真实运行状态语义 | ✅ 完成 | Python runner fallback 返回 `status:"fallback"`、`mode:"mock_fallback"`、`fallback_reason`；Agent UI 与 WorkflowRunPanel 均显示 amber fallback banner + 原因 | — |
+| P3-007 真实链路 E2E | ✅ 完成 | `npm run test:e2e:real`（`apps/api/scripts/real-opencode-e2e.mjs`）：读 `/health/deep` 自动 skip；就绪时输出 generation id、耗时、文件清单、smoke 状态、engine；真实运行验证 completed/opencode/passed | — |
+| P3-008 演示诊断页 | ✅ 完成 | `GET /health/deep`（DiagnosticsController）输出 LLM key 存在性、base URL/model、OpenCode engine+CLI+key、Docker 可用性、allowlist 前缀数、Python runner；首页 Diagnostics 组件实时展示绿/灰就绪点 | — |
+| P3-009 版本、Diff、日志 UI | ✅ 完成 | 工作区消费 versions/diff/runs/log：`CompletionSummary` 传入 active version；新增 `VersionList`（激活 + Diff）；ErrorPanel 显示最近一次运行的 stdout/stderr tail；diff endpoint 返回数组契约已修正 | — |
+| P3-010 内部演示 runbook | ✅ 完成 | `docs/technical/p3_demo_runbook.md`：环境前置、启动、标准 prompt、恢复路径、截图 checklist、故障表、回归命令 | — |
 
 ## 五、必须优先修复的问题
 
@@ -223,7 +240,7 @@ manifest 示例：
 
 ## 八、建议实施顺序
 
-### Milestone 1：完成真实生成安全闭环
+### Milestone 1：完成真实生成安全闭环 ✅
 
 1. P3-004：修复 pytest failed promote bug。
 2. P3-002：统一默认 CLI style 与 allowlist。
@@ -232,7 +249,7 @@ manifest 示例：
 
 完成判定：真实 OpenCode 失败只会导致 retry/failed，不会产生错误 active version。
 
-### Milestone 2：完成演示恢复闭环
+### Milestone 2：完成演示恢复闭环 ✅
 
 1. P3-003：fallback endpoint + UI。
 2. P3-005：manifest 消费。
@@ -241,7 +258,7 @@ manifest 示例：
 
 完成判定：真实链路失败时，演示者可以从 UI 明确切换 fallback 并完成源码查看、运行、导出。
 
-### Milestone 3：完成可重复演示
+### Milestone 3：完成可重复演示 ✅
 
 1. P3-007：真实链路 E2E。
 2. P3-008：演示诊断页。
