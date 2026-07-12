@@ -14,7 +14,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir pytest setuptools wheel
+RUN pip install --no-cache-dir pytest setuptools wheel openai
 
 # python_runner — executes generated Agent/Workflow projects
 COPY services/python-runner /tmp/python-runner

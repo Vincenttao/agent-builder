@@ -445,6 +445,30 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           'src/workflows/workflow.py',
           'tests/test_workflow_smoke.py',
         ];
+
+    // Derive example_input from the Spec's examples field when available,
+    // otherwise fall back to a generic placeholder that matches the domain.
+    let exampleInput: unknown = '你好，请帮我处理';
+    if (isAgent) {
+      const agentSpec = spec as AgentSpec;
+      if (agentSpec.examples && agentSpec.examples.length > 0) {
+        exampleInput = agentSpec.examples[0].input;
+      } else if (agentSpec.scenario) {
+        exampleInput = `[${agentSpec.scenario}场景的用户输入示例]`;
+      }
+    }
+    // workflow: use the first acceptance check or a generic dict.
+    if (!isAgent) {
+      const inputs: Record<string, string> = {};
+      // workflowSpec doesn't have examples, but acceptance_checks hint at inputs.
+      if (spec.acceptance_checks && spec.acceptance_checks.length > 0) {
+        inputs['requirement_doc'] = spec.acceptance_checks[0];
+      } else {
+        inputs['requirement_doc'] = '请描述你的需求';
+      }
+      exampleInput = inputs;
+    }
+
     const manifest = isAgent
       ? {
           schema_version: '1.0',
@@ -452,7 +476,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           entrypoint: 'src/agents/agent.py',
           test_command: 'pytest tests/test_agent_smoke.py -q',
           run_command: 'python src/main.py',
-          example_input: '请查询年假政策',
+          example_input: exampleInput,
           runtime: { framework: 'openjiuwen', mode: 'real' },
         }
       : {
@@ -461,7 +485,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           entrypoint: 'src/workflows/workflow.py',
           test_command: 'pytest tests/test_workflow_smoke.py -q',
           run_command: 'python -m src.main',
-          example_input: { requirement_doc: '示例需求文档内容' },
+          example_input: exampleInput,
           runtime: { framework: 'openjiuwen', mode: 'real' },
         };
     const lines = [
@@ -473,9 +497,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '约束：',
       '- 生成的 Agent/Workflow 必须通过 src/openjiuwen_runtime 适配层调用 OpenJiuwen。',
       '- 不得使用 LangGraph / CrewAI / Dify 等非 OpenJiuwen 框架。',
-      '- 不得硬编码任何 API key。',
+      '- 不得硬编码任何 API key。API key / base URL / model 通过环境变量注入：',
+      '  - 用 `os.getenv("DEEPSEEK_API_KEY")` 读取 key',
+      '  - 用 `os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")` 读取 base URL',
+      '  - 用 `os.getenv("AGENT_BUILDER_MODEL", "deepseek-v4-flash")` 读取模型名',
+      `- Agent 的业务逻辑必须通过 LLM 实现：使用 \`openai.OpenAI(base_url=..., api_key=...).chat.completions.create(...)\` 调用大模型。`,
       '- 不要依赖联网安装才能通过 smoke test；测试必须能在离线 sandbox 内通过。',
-      '- smoke test 不能伪造 Agent/Workflow 最终效果；必须直接调用平台入口函数并校验真实业务输出。',
+      '- smoke test 不要求真实 LLM 调用（可能因凭据/网络问题失败），但必须校验工具 handler 调用链和输出结构。',
       '- 平台会把 pytest 作为硬性 smoke gate；`python -m pip install -e . --no-build-isolation` 只是打包质量检查，不应成为测试通过的必要前提。',
       '- 如果生成 pyproject.toml，必须使用标准可安装配置；build-backend 使用 "setuptools.build_meta"，不要使用 "setuptools.backends._legacy:_Backend"。',
       '',
@@ -489,15 +517,31 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '',
       '平台运行入口要求：',
       isAgent
-        ? '- `src/agents/agent.py` 必须暴露 `run_agent(message: str) -> str | dict`，由该函数执行必要工具 handler 并返回最终用户可见回复；smoke test 必须直接覆盖 `run_agent()`。'
-        : '- `src/workflows/workflow.py` 必须暴露 `run_workflow(inputs: dict) -> dict`，由该函数执行节点逻辑并返回最终输出；smoke test 必须直接覆盖 `run_workflow()`。',
-      '- 入口函数必须离线可运行，不得依赖真实 API key 或联网调用，也不得返回占位/模拟文案。',
+        ? '- `src/agents/agent.py` 必须暴露 `run_agent(message: str) -> str | dict`，由该函数调用 LLM 处理用户输入、调用工具 handler、生成最终回复；smoke test 必须直接覆盖 `run_agent()`。'
+        : '- `src/workflows/workflow.py` 必须暴露 `run_workflow(inputs: dict) -> dict`，由该函数调用 LLM 编排节点逻辑并返回最终输出；smoke test 必须直接覆盖 `run_workflow()`。',
+      '- 入口函数在真实运行时可通过环境变量获取 LLM 凭据；smoke test 中可使用 mock/fixture 替代真实 LLM 调用。',
+      '- 不得返回占位/模拟文案（如 "这是一个示例回复"）。',
+      '',
+      'Python 导入路径规范（极其重要，违反会导致 ModuleNotFoundError）：',
+      '- `python src/main.py` 执行时，Python 自动将 `src/` 目录加入 sys.path[0]。',
+      '- 因此 **src/main.py 中必须使用 `from agents.agent import run_agent`**，严禁写成 `from src.agents.agent import ...`。',
+      '- 同理，`src/agents/agent.py` 中导入 openjiuwen_runtime 必须写 `from openjiuwen_runtime import ...`，禁止 `from src.openjiuwen_runtime`。',
+      '- 测试文件（tests/）通过 PYTHONPATH=src 运行，测试中导入 Agent 必须写 `from agents.agent import run_agent`。',
+      '- 简记：**所有文件都从 src/ 内部视角导入，永远不要写 `from src.` 前缀**。',
+      '',
+      '代码质量要求：',
+      '- Agent 的核心逻辑必须通过 LLM 调用实现（使用 openai 库），而不是纯规则/正则/关键词匹配。',
+      '- run_agent() 流程：解析用户 message → 组装 system prompt + 工具定义 → 调用 LLM → 解析 tool_calls → 执行 handler → 将结果回传 LLM 生成最终回复。',
+      '- 工具 handler 实现具体业务操作（如文本分析、数据提取），返回结构化结果供 LLM 组织最终输出。',
+      '- 如果 Spec 的 examples 字段有示例，应在代码中覆盖这些示例路径以确保业务正确性。',
+      '- 中文输出时，注意 Python 字符串中嵌套引号要加反斜杠转义，或使用单引号包裹含双引号的字符串。',
       '',
       'smoke test 要求：',
       `- 必须包含 ${isAgent ? 'tests/test_agent_smoke.py' : 'tests/test_workflow_smoke.py'}。`,
       '- pytest tests/ -q 必须通过。',
       '- 测试不得访问真实网络，不得要求真实 API key。',
       '- 测试至少校验 manifest、入口文件、OpenJiuwen adapter、Spec 中的工具/节点配置。',
+      '- 测试必须覆盖真实业务输出：用 Spec 中 examples（如有）或场景化输入调用 run_agent()/run_workflow()，断言返回内容包含预期关键词。',
       '- 推荐自检命令：python -m pytest tests/ -q。若额外验证打包安装，请使用 python -m pip install -e . --no-build-isolation，但安装失败应先修正 pyproject.toml。',
       '',
       'Spec（JSON）：',

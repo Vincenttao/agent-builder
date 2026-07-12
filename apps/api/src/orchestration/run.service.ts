@@ -106,6 +106,26 @@ export class RunService {
     return { status: result.status, output: result.output, events: result.events };
   }
 
+  /**
+   * Build the env allowlist for the run sandbox, injecting the same LLM
+   * credentials used by OpenCode so generated Agents/Workflows can call the
+   * real LLM API at runtime (via openai Python SDK).
+   */
+  private buildRunEnv(): Record<string, string> {
+    const map: Record<string, string> = {};
+    // Pass LLM credentials so the generated agent can call the real API.
+    const provider = process.env.OPENCODE_PROVIDER;
+    const apiKey = process.env.OPENCODE_API_KEY;
+    const baseUrl = process.env.OPENCODE_BASE_URL;
+    const model = process.env.OPENCODE_MODEL;
+    if (provider && apiKey) {
+      map[`${provider.toUpperCase()}_API_KEY`] = apiKey;
+      if (baseUrl) map[`${provider.toUpperCase()}_BASE_URL`] = baseUrl;
+    }
+    if (model) map['AGENT_BUILDER_MODEL'] = model;
+    return map;
+  }
+
   private async executeRunner(
     projectPath: string,
     generationId: string,
@@ -122,6 +142,7 @@ export class RunService {
       workspacePath: projectPath,
       runtime: SandboxRuntime.Docker,
       stdin,
+      envAllowlist: this.buildRunEnv(),
       timeoutSeconds: 60,
     });
 
