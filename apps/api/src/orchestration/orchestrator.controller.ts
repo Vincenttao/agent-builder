@@ -127,6 +127,13 @@ export class OrchestratorController {
     return this.orchestrator.repair(id, body.instruction);
   }
 
+  // ─── P3-003: Template fallback ───────────────────────────────────
+
+  @Post(':id/fallback')
+  async fallback(@Param('id') id: string): Promise<RepairResponse> {
+    return this.orchestrator.fallback(id);
+  }
+
   // ─── Phase 14: Version activate ──────────────────────────────────
 
   @Post(':id/versions/:versionId/activate')

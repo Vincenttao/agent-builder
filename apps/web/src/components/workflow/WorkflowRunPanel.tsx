@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { workflowRun } from '@/lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { workflowRun, getManifest } from '@/lib/api';
 import type { RunnerResult } from '@agent-builder/shared-contracts';
 
 interface NodeRecord {
@@ -14,6 +14,8 @@ interface NodeRecord {
 /**
  * Workflow run panel (PRD FR-008, §12.4). Runs the workflow with a requirement
  * doc and shows per-node status + the final Markdown report.
+ * P3-005: prefills the doc from the manifest's example_input.
+ * P3-006: surfaces mock_fallback status with the underlying reason.
  */
 export function WorkflowRunPanel({ generationId }: { generationId: string }) {
   const [doc, setDoc] = useState('客户希望建设一个智能客服 Demo，两周内上线，预算有限。');
@@ -21,6 +23,24 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
   const [report, setReport] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runMode, setRunMode] = useState<string | null>(null);
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
+  const [runCount, setRunCount] = useState(0);
+  const userEditedRef = useRef(false);
+
+  useEffect(() => {
+    getManifest(generationId)
+      .then((m) => {
+        let sample = '';
+        if (typeof m.example_input === 'string') {
+          sample = m.example_input;
+        } else if (m.example_input && typeof m.example_input === 'object') {
+          sample = String((m.example_input as Record<string, unknown>).requirement_doc ?? '');
+        }
+        if (sample.trim() && !userEditedRef.current) setDoc(sample);
+      })
+      .catch(() => undefined);
+  }, [generationId]);
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +49,8 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
     setError(null);
     setNodes([]);
     setReport(null);
+    setRunMode(null);
+    setFallbackReason(null);
     try {
       const result: RunnerResult = await workflowRun(generationId, { requirement_doc: doc });
       setNodes((result.events as unknown as NodeRecord[]) ?? []);
@@ -38,6 +60,9 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
         (out?.result as string) ??
         (out ? JSON.stringify(out, null, 2) : null)
       );
+      setRunMode(result.mode ?? (result.mock ? 'mock' : null));
+      setFallbackReason(result.fallback_reason ?? null);
+      setRunCount((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : '运行失败');
     } finally {
@@ -59,9 +84,16 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
           <p className="section-label">Workflow Run</p>
           <h2 className="mt-1 text-sm font-semibold text-zinc-950">流程运行记录</h2>
         </div>
-        <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
-          Node Trace
-        </span>
+        <div className="flex items-center gap-2">
+          {runCount > 0 && (
+            <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
+              已运行 {runCount} 次
+            </span>
+          )}
+          <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
+            Node Trace
+          </span>
+        </div>
       </div>
 
       <form onSubmit={run} className="flex gap-2">
@@ -70,7 +102,7 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
           rows={2}
           aria-label="Workflow 输入"
           value={doc}
-          onChange={(e) => setDoc(e.target.value)}
+          onChange={(e) => { userEditedRef.current = true; setDoc(e.target.value); }}
           data-testid="workflow-input"
         />
         <button
@@ -82,6 +114,12 @@ export function WorkflowRunPanel({ generationId }: { generationId: string }) {
           {running ? '运行中…' : '运行 Workflow'}
         </button>
       </form>
+
+      {runMode === 'mock_fallback' && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="workflow-fallback">
+          ⚠ Mock fallback — 真实运行失败，显示模拟输出{fallbackReason ? `：${fallbackReason}` : ''}
+        </div>
+      )}
 
       {nodes.length > 0 && (
         <div data-testid="workflow-nodes" className="overflow-hidden rounded-md border border-zinc-200">

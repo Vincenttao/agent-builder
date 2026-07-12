@@ -15,6 +15,18 @@ from typing import Any, Dict, Optional
 from .mock_openjiuwen import AgentAdapter, WorkflowAdapter
 
 
+def _load_manifest(project_path: str) -> Optional[Dict[str, Any]]:
+    """Load agent_builder_manifest.json if present (T-002 / P3-005)."""
+    manifest_path = os.path.join(project_path, "agent_builder_manifest.json")
+    if not os.path.exists(manifest_path):
+        return None
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def _find_file(project_path: str, patterns: list[str]) -> Optional[str]:
     """Auto-discover a file matching any pattern in the project tree."""
     root = Path(project_path)
@@ -26,16 +38,7 @@ def _find_file(project_path: str, patterns: list[str]) -> Optional[str]:
 
 def _load_spec(project_path: str, kind: str) -> Dict[str, Any]:
     """Load the Spec, auto-discovering it if not at the standard path."""
-    # 0. Try manifest first (T-002): gives entrypoint, test command, runtime info.
-    manifest_path = os.path.join(project_path, "agent_builder_manifest.json")
-    if os.path.exists(manifest_path):
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            manifest = None
-    else:
-        manifest = None
+    manifest = _load_manifest(project_path)
 
     # 1. Try standard path (TemplateEngine output).
     std_path = os.path.join(project_path, "config", f"{kind}_spec.json")
@@ -50,7 +53,18 @@ def _load_spec(project_path: str, kind: str) -> Dict[str, Any]:
         with open(os.path.join(project_path, discovered), "r", encoding="utf-8") as f:
             return json.load(f)
 
-    # 3. Fallback: scan for any JSON with spec-like fields.
+    # 3. P3-005: if the manifest names an entrypoint, search its directory tree
+    # for a spec file (opencode projects may co-locate spec + entrypoint).
+    if manifest and isinstance(manifest.get("entrypoint"), str):
+        entry_abs = os.path.join(project_path, manifest["entrypoint"])
+        entry_dir = os.path.dirname(entry_abs)
+        if os.path.isdir(entry_dir):
+            for root, _, files in os.walk(entry_dir):
+                if fname in files:
+                    with open(os.path.join(root, fname), "r", encoding="utf-8") as f:
+                        return json.load(f)
+
+    # 4. Fallback: scan for any JSON with spec-like fields.
     for p in Path(project_path).rglob("*.json"):
         if p.name in ("package.json", "agent_builder_manifest.json"):
             continue
@@ -61,7 +75,7 @@ def _load_spec(project_path: str, kind: str) -> Dict[str, Any]:
         except (json.JSONDecodeError, OSError):
             continue
 
-    # 4. Minimal spec from project scan.
+    # 5. Minimal spec from project scan.
     py_files = list(Path(project_path).rglob("*.py"))
     tool_names = [
         f.stem for f in py_files
@@ -85,6 +99,11 @@ def _ensure_project_on_path(project_path: str) -> None:
 
 def run_agent(project_path: str, message: str) -> Dict[str, Any]:
     _ensure_project_on_path(project_path)
+    # P3-005: fall back to the manifest's example_input when no message given.
+    if not message or not message.strip():
+        manifest = _load_manifest(project_path)
+        if manifest and isinstance(manifest.get("example_input"), str):
+            message = manifest["example_input"]
     try:
         spec = _load_spec(project_path, "agent")
         agent = AgentAdapter().create_agent(spec)
@@ -114,6 +133,11 @@ def run_agent(project_path: str, message: str) -> Dict[str, Any]:
 
 def run_workflow(project_path: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
     _ensure_project_on_path(project_path)
+    # P3-005: fall back to the manifest's example_input when inputs are empty.
+    if not inputs:
+        manifest = _load_manifest(project_path)
+        if manifest and isinstance(manifest.get("example_input"), dict):
+            inputs = manifest["example_input"]
     try:
         spec = _load_spec(project_path, "workflow")
         workflow = WorkflowAdapter().create_workflow(spec)

@@ -78,6 +78,18 @@ export function repairGeneration(id: string, instruction?: string): Promise<{ ge
   });
 }
 
+// ─── P3-003: Template fallback ─────────────────────────────────────
+
+export function fallbackGeneration(id: string): Promise<{ generation_id: string; version_id: string | null; version_label: string; retry_index: number }> {
+  return jsonFetch(`/api/generations/${id}/fallback`, { method: 'POST' });
+}
+
+// ─── P3-005: Manifest ──────────────────────────────────────────────
+
+export function getManifest(id: string): Promise<import('@agent-builder/shared-contracts').AgentBuilderManifest> {
+  return jsonFetch(`/api/generations/${id}/manifest`);
+}
+
 // ─── Phase 14: Versions ────────────────────────────────────────────
 
 export function getVersions(id: string): Promise<import('@agent-builder/shared-contracts').ProjectVersion[]> {

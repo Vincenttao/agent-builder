@@ -21,7 +21,9 @@ import { SpecValidatorService } from '../spec/spec-validator.service';
 import { DraftRepository } from '../generations/repositories/draft.repository';
 import { SpecRepository } from '../generations/repositories/spec.repository';
 import { CodeGenerationService } from '../codegen/codegen.service';
+import type { EngineName } from '../codegen/engine';
 import { lintGeneratedProject } from '../codegen/project-lint';
+import { isCommandAllowed } from '../sandbox/command-allowlist';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { projectRoot } from '../common/workspace';
 
@@ -38,6 +40,8 @@ export class OrchestratorService {
   private readonly logger = new Logger(OrchestratorService.name);
   /** Per-generation in-flight pipeline promises (D-006 concurrency guard). */
   private readonly activePipelines = new Map<string, Promise<void>>();
+  /** Per-generation forced engine override — set by fallback (P3-003). */
+  private readonly forcedEngines = new Map<string, EngineName>();
 
   constructor(
     private readonly genService: GenerationService,
@@ -51,23 +55,36 @@ export class OrchestratorService {
     private readonly specRepo: SpecRepository,
   ) {}
 
-  /** Run the pipeline, ensuring only one is active per generation (D-006). */
-  async runPipeline(generationId: string): Promise<void> {
+  /**
+   * Run the pipeline, ensuring only one is active per generation (D-006).
+   * P3-003: `forceEngine: 'template'` lets a failed OpenCode generation fall
+   * back to the deterministic TemplateEngine for demo recovery.
+   */
+  async runPipeline(
+    generationId: string,
+    opts: { forceEngine?: EngineName; fallbackReason?: string } = {},
+  ): Promise<void> {
     // If a pipeline is already running, chain onto it.
     const existing = this.activePipelines.get(generationId);
     if (existing) {
       this.logger.warn(`pipeline already running for ${generationId}, chaining`);
       return existing;
     }
-
-    const promise = this.runPipelineInternal(generationId).finally(() => {
+    if (opts.forceEngine) {
+      this.forcedEngines.set(generationId, opts.forceEngine);
+    }
+    const promise = this.runPipelineInternal(generationId, opts).finally(() => {
       this.activePipelines.delete(generationId);
+      this.forcedEngines.delete(generationId);
     });
     this.activePipelines.set(generationId, promise);
     return promise;
   }
 
-  private async runPipelineInternal(generationId: string): Promise<void> {
+  private async runPipelineInternal(
+    generationId: string,
+    opts: { fallbackReason?: string } = {},
+  ): Promise<void> {
     const spec = await this.genService.parseAndPersistSpec(generationId);
     const maxRetries = parseInt(process.env.OPENCODE_MAX_RETRIES ?? '2', 10);
     let lastError = '';
@@ -79,12 +96,15 @@ export class OrchestratorService {
       }
 
       try {
-        const projectPath = await this.generate(generationId, spec, lastError || undefined);
+        const projectPath = await this.generate(generationId, spec, {
+          lastError: lastError || undefined,
+          fallbackReason: opts.fallbackReason,
+        });
         // Run lint gate for all engines, but only throw for non-opencode (D-008).
         try {
           lintGeneratedProject(projectPath, spec);
         } catch (lintErr) {
-          if (this.codegenEngineName() !== 'opencode') throw lintErr;
+          if (this.effectiveEngineName(generationId) !== 'opencode') throw lintErr;
           const lintMsg = lintErr instanceof Error ? lintErr.message : String(lintErr);
           this.logger.warn(`opencode lint warning: ${lintMsg}`);
           await this.eventService.record({
@@ -97,7 +117,7 @@ export class OrchestratorService {
 
         const testResult = await this.smokeTest(generationId, spec);
         // opencode mode: retry if smoke test failed, feeding output back
-        if (!testResult.passed && this.codegenEngineName() === 'opencode' && attempt < maxRetries) {
+        if (!testResult.passed && this.effectiveEngineName(generationId) === 'opencode' && attempt < maxRetries) {
           lastError = `【测试失败】\n${testResult.output}`;
           this.logger.warn(`opencode auto-retry ${attempt + 1}/${maxRetries}`);
           await this.eventService.record({
@@ -110,7 +130,7 @@ export class OrchestratorService {
         }
 
         // D-002: If out of retries and still failing, mark as failed.
-        if (!testResult.passed && this.codegenEngineName() === 'opencode') {
+        if (!testResult.passed && this.effectiveEngineName(generationId) === 'opencode') {
           this.logger.warn(`opencode pipeline failed after ${maxRetries + 1} attempts`);
           await this.genService.markFailed(
             generationId,
@@ -122,7 +142,7 @@ export class OrchestratorService {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const code = err instanceof AgentBuilderError ? err.code : ErrorCode.CodeGenerationFailed;
-        if (this.codegenEngineName() === 'opencode' && attempt < maxRetries) {
+        if (this.effectiveEngineName(generationId) === 'opencode' && attempt < maxRetries) {
           this.logger.warn(`opencode auto-retry ${attempt + 1}/${maxRetries}: ${msg}`);
           lastError = msg;
           continue; // retry
@@ -134,14 +154,18 @@ export class OrchestratorService {
     }
   }
 
-  private async generate(generationId: string, spec: AgentSpec | WorkflowSpec, lastError?: string): Promise<string> {
+  private async generate(
+    generationId: string,
+    spec: AgentSpec | WorkflowSpec,
+    opts: { lastError?: string; fallbackReason?: string } = {},
+  ): Promise<string> {
     this.genService.transitionTo(generationId, GenerationStatus.Generating);
-    const prefix = lastError ? `[自动修复] ` : '';
+    const prefix = opts.lastError ? `[自动修复] ` : opts.fallbackReason ? `[模板回退] ` : '';
     await this.eventService.record({
       generation_id: generationId,
       type: EventType.CommandStarted,
       message: `${prefix}开始生成代码：${spec.name}`,
-      payload: { phase: 'code_generation', repair: !!lastError },
+      payload: { phase: 'code_generation', repair: !!opts.lastError, fallback: !!opts.fallbackReason },
     });
 
     const versionId = this.versionRepo.newId();
@@ -149,17 +173,17 @@ export class OrchestratorService {
     fs.mkdirSync(projectPath, { recursive: true });
 
     // Inject error context into the project for opencode to read on retry.
-    if (lastError) {
+    if (opts.lastError) {
       const agentDir = path.join(projectPath, '.agent_builder');
       fs.mkdirSync(agentDir, { recursive: true });
       fs.writeFileSync(
         path.join(agentDir, 'fix.md'),
-        `# 上一轮生成失败，请修复以下问题\n\n${lastError}\n\n请根据错误信息修改代码，确保所有测试通过。\n`,
+        `# 上一轮生成失败，请修复以下问题\n\n${opts.lastError}\n\n请根据错误信息修改代码，确保所有测试通过。\n`,
         'utf8',
       );
     }
 
-    const engineName = this.codegenEngineName();
+    const engineName = this.effectiveEngineName(generationId);
     const mock = engineName !== 'opencode' || process.env.OPENCODE_REQUIRE_REAL !== 'true';
 
     const result = await this.codegen.generate(
@@ -191,9 +215,11 @@ export class OrchestratorService {
       id: versionId,
       generation_id: generationId,
       version_label: versionLabel,
-      summary: existingCount > 0
-        ? `repair: 自动修复 — ${spec.name}`
-        : `feat: 生成 ${spec.name}`,
+      summary: opts.fallbackReason
+        ? `fallback: 模板回退 — ${spec.name}`
+        : existingCount > 0
+          ? `repair: 自动修复 — ${spec.name}`
+          : `feat: 生成 ${spec.name}`,
       project_path: projectPath,
       file_count: result.files.length,
       test_status: TestStatus.Skipped,
@@ -209,7 +235,8 @@ export class OrchestratorService {
         file_count: result.files.length,
         version_id: version.id,
         engine: result.engine,
-        fallback: result.engine === 'template' && this.codegenEngineName() === 'opencode',
+        // Fallback flag: ran template while configured for opencode (P3-003).
+        fallback: result.engine === 'template' && this.configuredEngineName() === 'opencode',
       },
     });
     return projectPath;
@@ -225,7 +252,7 @@ export class OrchestratorService {
     const hasTests = this.hasTestFiles(projectPath);
     if (!hasTests) {
       this.logger.warn(`No test files found for ${generationId}`);
-      if (this.codegenEngineName() === 'opencode') {
+      if (this.effectiveEngineName(generationId) === 'opencode') {
         await this.eventService.record({
           generation_id: generationId,
           type: EventType.Thought,
@@ -250,7 +277,7 @@ export class OrchestratorService {
     }
 
     // opencode projects need pip install before tests can run.
-    if (this.codegenEngineName() === 'opencode') {
+    if (this.effectiveEngineName(generationId) === 'opencode') {
       const installResult = await this.sandbox.run({
         generationId,
         versionId: version?.id ?? null,
@@ -290,7 +317,7 @@ export class OrchestratorService {
       generationId,
       versionId: version?.id ?? null,
       jobType: JobType.SmokeTest,
-      command: ['python', '-m', 'pytest', 'tests/', '-q'],
+      command: this.buildSmokeCommand(projectPath),
       workspacePath: projectPath,
       runtime: SandboxRuntime.Mock,
       timeoutSeconds: 90,
@@ -317,7 +344,7 @@ export class OrchestratorService {
     });
 
     if (!passed) {
-      if (this.codegenEngineName() === 'opencode') {
+      if (this.effectiveEngineName(generationId) === 'opencode') {
         // P3-004: do NOT promoteVersion on failed tests.
         // The retry loop in runPipelineInternal will handle retry or markFailed.
         await this.eventService.record({
@@ -386,6 +413,48 @@ export class OrchestratorService {
     }
 
     return { generation_id: generationId, version_id: null, version_label: versionLabel, retry_index: retryIndex };
+  }
+
+  // ─── P3-003: Template fallback for failed OpenCode generations ──────
+
+  /**
+   * Re-run a FAILED generation with the deterministic TemplateEngine so a demo
+   * can still produce source / run / export when real OpenCode fails. The
+   * persisted Spec is reused (no re-parse); the new version is mock_mode and
+   * clearly flagged as a fallback, never an OpenCode success.
+   */
+  async fallback(generationId: string): Promise<{ generation_id: string; version_id: string | null; version_label: string; retry_index: number }> {
+    const gen = this.genService.getById(generationId);
+    if (!gen) {
+      throw new AgentBuilderError(ErrorCode.PromptParseFailed, `生成任务 ${generationId} 不存在`);
+    }
+    if (gen.status !== GenerationStatus.Failed) {
+      throw new AgentBuilderError(
+        ErrorCode.CodeGenerationFailed,
+        `只有失败的生成才能切换模板引擎（当前状态：${gen.status}）`,
+      );
+    }
+    const errorCode = gen.error_code ?? 'UNKNOWN';
+    const errorMessage = gen.error_message ?? '未知失败原因';
+
+    await this.eventService.record({
+      generation_id: generationId,
+      type: EventType.Thought,
+      message: `真实 OpenCode 生成失败（${errorCode}），切换至模板引擎完成演示。原始原因：${errorMessage}`,
+      payload: { fallback: true, fallback_engine: 'template', original_error_code: errorCode },
+    });
+
+    // Reset to planning so the pipeline can transition forward (D-001).
+    this.genService.transitionTo(generationId, GenerationStatus.Planning);
+
+    const existingCount = this.genService.countVersions(generationId);
+    const versionLabel = `v${existingCount + 1}`;
+
+    void this.runPipeline(generationId, { forceEngine: 'template', fallbackReason: errorMessage }).catch((e) => {
+      this.logger.error(`fallback pipeline error for ${generationId}: ${(e as Error).message}`);
+    });
+
+    return { generation_id: generationId, version_id: null, version_label: versionLabel, retry_index: existingCount };
   }
 
   // ─── Phase 15: Draft / Confirm ───────────────────────────────────
@@ -528,10 +597,39 @@ export class OrchestratorService {
     }
   }
 
-  /** The configured codegen engine (§4 / Phase 11 task 3). Defaults to template. */
-  private codegenEngineName(): 'template' | 'opencode' | 'mock' {
+  /** The env-configured engine (§4 / Phase 11 task 3). Defaults to template.
+   * Reflects intent only — use {@link effectiveEngineName} for the engine a
+   * pipeline run will actually use. */
+  private configuredEngineName(): EngineName {
     const e = process.env.CODEGEN_ENGINE ?? 'template';
     return e === 'opencode' || e === 'mock' ? e : 'template';
+  }
+
+  /** The engine a pipeline run will actually use — a forced override (P3-003
+   * fallback) wins, otherwise the env-configured engine. */
+  private effectiveEngineName(generationId: string): EngineName {
+    return this.forcedEngines.get(generationId) ?? this.configuredEngineName();
+  }
+
+  /**
+   * Build the smoke-test argv, preferring the manifest's `test_command`
+   * (P3-005) when it maps safely into the allowlist; otherwise run all tests.
+   */
+  private buildSmokeCommand(projectPath: string): string[] {
+    const manifestPath = path.join(projectPath, 'agent_builder_manifest.json');
+    try {
+      if (fs.existsSync(manifestPath)) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { test_command?: string };
+        if (typeof manifest.test_command === 'string') {
+          const mapped = mapManifestTestCommand(manifest.test_command);
+          if (mapped && isCommandAllowed(mapped).ok) return mapped;
+          this.logger.warn(`manifest test_command rejected, using default: ${manifest.test_command}`);
+        }
+      }
+    } catch {
+      // best-effort: fall through to default
+    }
+    return ['python', '-m', 'pytest', 'tests/', '-q'];
   }
 
   /** The most recently created version for a generation (the one under test). */
@@ -555,4 +653,22 @@ export class OrchestratorService {
       return false;
     }
   }
+}
+
+/**
+ * Map a manifest `test_command` (e.g. "pytest tests/test_agent_smoke.py -q") to
+ * an allowlist-safe argv, normalizing to the `python -m pytest …` prefix.
+ * Returns null for any form that can't be mapped (caller falls back to the
+ * default whole-tests run). P3-005.
+ */
+function mapManifestTestCommand(testCommand: string): string[] | null {
+  const parts = testCommand.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts[0] === 'pytest') {
+    return ['python', '-m', 'pytest', ...parts.slice(1)];
+  }
+  if (parts[0] === 'python' && parts[1] === '-m' && parts[2] === 'pytest') {
+    return parts;
+  }
+  return null; // unknown form — caller uses the safe default
 }

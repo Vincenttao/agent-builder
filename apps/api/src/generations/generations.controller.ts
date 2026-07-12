@@ -15,6 +15,7 @@ import {
   type GenerationDto,
   toGenerationDto,
   type VersionListResponse,
+  type AgentBuilderManifest,
 } from '@agent-builder/shared-contracts';
 import { toWorkspaceRelative } from '../common/workspace';
 import fs from 'node:fs';
@@ -99,6 +100,14 @@ export class GenerationsController {
   listVersions(@Param('id') id: string): VersionListResponse {
     this.genService.getByIdOrThrow(id);
     return this.genService.listVersions(id);
+  }
+
+  // ─── P3-005: Manifest ────────────────────────────────────────────
+
+  @Get(':id/manifest')
+  getManifest(@Param('id') id: string): AgentBuilderManifest {
+    this.genService.getByIdOrThrow(id);
+    return this.genService.getManifest(id);
   }
 
   @Get(':id/versions/:versionId/diff')

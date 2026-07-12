@@ -261,4 +261,104 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     // The active version should have been updated to the repair version.
     expect(final!.active_version_id).not.toBe(before.active_version_id);
   });
+
+  // P3-003: template fallback recovers a failed OpenCode generation
+  it('#7 fallback re-runs a failed generation with the template engine', async () => {
+    const prevEngine = process.env.CODEGEN_ENGINE;
+    const prevRetries = process.env.OPENCODE_MAX_RETRIES;
+    process.env.CODEGEN_ENGINE = 'opencode';
+    process.env.OPENCODE_MAX_RETRIES = '0';
+
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ab-fallback-'));
+    const stdoutPath = path.join(logDir, 'stdout.log');
+    const stderrPath = path.join(logDir, 'stderr.log');
+    fs.writeFileSync(stdoutPath, '');
+    fs.writeFileSync(stderrPath, 'pip install failed');
+
+    const realRun = sandbox.run.bind(sandbox);
+    const runSpy = jest.spyOn(sandbox, 'run').mockImplementation(async (req) => {
+      // Fail pip install so the opencode pipeline fails (no retry, retries=0).
+      if (req.command[0] === 'python' && req.command[2] === 'pip') {
+        return {
+          jobId: 'sjob_install_failed',
+          runtime: SandboxRuntime.Mock,
+          status: SandboxJobStatus.Failed,
+          exitCode: 1,
+          stdoutPath,
+          stderrPath,
+          durationMs: 1,
+          mock: true,
+        };
+      }
+      return realRun(req);
+    });
+
+    try {
+      const gen = await genService.createGeneration({
+        type: GenerationType.Agent,
+        prompt: '塔罗占卜 Agent',
+        mode: 'auto',
+        model: 'default',
+      });
+      createdGenDirs.push(path.join(GENERATED_DIR, gen.id));
+      await orchestrator.runPipeline(gen.id); // fails: opencode + pip install error
+      expect(genService.getByIdOrThrow(gen.id).status).toBe('failed');
+
+      // Fallback must be rejected for non-failed generations elsewhere, but
+      // here the generation is failed — fallback should succeed.
+      const fallback = await request(httpServer)
+        .post(`/api/generations/${gen.id}/fallback`)
+        .expect(201);
+      expect(fallback.body.version_label).toBe('v2');
+
+      // Wait for the fallback (template) pipeline to complete.
+      let final: { status: string; active_version_id: string | null } | null = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const g = genService.getByIdOrThrow(gen.id);
+        if (g.status === 'completed' || g.status === 'failed') {
+          final = { status: g.status, active_version_id: g.active_version_id };
+          break;
+        }
+      }
+      expect(final).not.toBeNull();
+      expect(final!.status).toBe('completed');
+
+      // The fallback version is mock (template engine), not real opencode.
+      const versions = versionRepo.listByGeneration(gen.id);
+      const active = versions.find((v) => v.id === final!.active_version_id);
+      expect(active?.mock_mode).toBe(true);
+
+      // The command_finished event flags this as a template fallback.
+      const { EventService } = await import('../generations/event.service');
+      const events = app.get(EventService).history(gen.id);
+      const cmdFinished = events.find((e) => e.type === 'command_finished' && e.payload?.fallback === true);
+      expect(cmdFinished).toBeTruthy();
+      expect(cmdFinished?.payload?.engine).toBe('template');
+    } finally {
+      runSpy.mockRestore();
+      fs.rmSync(logDir, { recursive: true, force: true });
+      if (prevEngine === undefined) delete process.env.CODEGEN_ENGINE;
+      else process.env.CODEGEN_ENGINE = prevEngine;
+      if (prevRetries === undefined) delete process.env.OPENCODE_MAX_RETRIES;
+      else process.env.OPENCODE_MAX_RETRIES = prevRetries;
+    }
+  });
+
+  // P3-003: fallback is rejected unless the generation has failed
+  it('#8 fallback is rejected for a non-failed generation', async () => {
+    const id = await createAndWait('塔罗占卜 Agent', 'agent');
+    await request(httpServer).post(`/api/generations/${id}/fallback`).expect(400);
+  });
+
+  // P3-005: manifest endpoint exposes entrypoint / test_command / example_input
+  it('#9 manifest endpoint returns the active version manifest', async () => {
+    const id = await createAndWait('塔罗占卜 Agent', 'agent');
+    const manifest = (await request(httpServer).get(`/api/generations/${id}/manifest`).expect(200)).body;
+    expect(manifest.schema_version).toBe('1.0');
+    expect(manifest.project_type).toBe('agent');
+    expect(manifest.entrypoint).toBe('src/agents/agent.py');
+    expect(manifest.test_command).toContain('pytest');
+    expect(typeof manifest.example_input).toBe('string');
+  });
 });

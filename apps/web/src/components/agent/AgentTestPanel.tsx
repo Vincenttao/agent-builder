@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { agentRun, getGeneration } from '@/lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { agentRun, getGeneration, getManifest } from '@/lib/api';
 import type { RunnerResult, GenerationDto } from '@agent-builder/shared-contracts';
 
 /**
  * Agent effect test bench (PRD FR-007, §12.3). Sends a message and shows the
  * mock reply + recorded tool calls. D-023: shows agent name and mock status.
+ * P3-005: prefills the message from the manifest's example_input.
  */
 export function AgentTestPanel({ generationId }: { generationId: string }) {
   const [message, setMessage] = useState('');
@@ -17,9 +18,17 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
   const [gen, setGen] = useState<GenerationDto | null>(null);
   const [runMode, setRunMode] = useState<string | null>(null);
   const [runCount, setRunCount] = useState(0);
+  // Track whether the user typed, so a late manifest load can't overwrite it.
+  const userEditedRef = useRef(false);
 
   useEffect(() => {
     getGeneration(generationId).then(setGen).catch(() => undefined);
+    getManifest(generationId)
+      .then((m) => {
+        const sample = typeof m.example_input === 'string' ? m.example_input : '';
+        if (sample.trim() && !userEditedRef.current) setMessage(sample);
+      })
+      .catch(() => undefined);
   }, [generationId]);
 
   async function send(e: React.FormEvent) {
@@ -74,7 +83,7 @@ export function AgentTestPanel({ generationId }: { generationId: string }) {
           placeholder="输入测试消息…"
           aria-label="Agent 测试消息"
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => { userEditedRef.current = true; setMessage(e.target.value); }}
           data-testid="agent-message-input"
         />
         <button

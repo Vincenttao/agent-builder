@@ -14,6 +14,7 @@ import type {
   ProjectVersion,
   AgentSpec,
   WorkflowSpec,
+  AgentBuilderManifest,
 } from '@agent-builder/shared-contracts';
 import {
   GenerationStatus,
@@ -241,6 +242,23 @@ export class GenerationService {
     const gen = this.genRepo.getById(generationId);
     if (!gen?.active_version_id) return null;
     return this.versionRepo.getById(gen.active_version_id);
+  }
+
+  /**
+   * Read the active version's `agent_builder_manifest.json` (P3-005). Used by
+   * the UI to prefill example input and surface entrypoint / runtime info.
+   * Throws if no active version or the manifest is absent.
+   */
+  getManifest(generationId: string): AgentBuilderManifest {
+    const version = this.getActiveVersion(generationId);
+    if (!version) {
+      throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, '尚无可用版本');
+    }
+    const manifestPath = path.join(version.project_path, 'agent_builder_manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, '项目缺少 agent_builder_manifest.json');
+    }
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as AgentBuilderManifest;
   }
 
   /** Phase 14: list generations with optional status filter and pagination. */
