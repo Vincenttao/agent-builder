@@ -22,12 +22,12 @@
 SPEC_LLM_PROVIDER=openai-compatible
 SPEC_LLM_BASE_URL=https://api.deepseek.com/v1
 SPEC_LLM_API_KEY=<your-deepseek-key>
-SPEC_LLM_MODEL=deepseek-chat
+SPEC_LLM_MODEL=deepseek-v4-pro
 CODEGEN_ENGINE=opencode
 OPENCODE_REQUIRE_REAL=true
 OPENCODE_CLI_STYLE=v1
 OPENCODE_PROVIDER=deepseek
-OPENCODE_MODEL=deepseek-chat
+OPENCODE_MODEL=deepseek-v4-pro
 OPENCODE_BASE_URL=https://api.deepseek.com/v1
 OPENCODE_API_KEY=<your-deepseek-key>
 SKILL_LLM_TLS_VERIFY=false
@@ -165,7 +165,7 @@ npm run test:e2e:real
 |---|---|---|
 | 命令被沙箱拒绝：`command contains absolute path or ..` | allowlist 拒绝（含 `..` 路径逃逸或绝对路径） | 检查 manifest `test_command` 是否为 `pytest …` 标准形式；prompt 文本中的省略号 `...` 不再误判 |
 | `pip install` 失败 | 网络 / 镜像源 | 错误面板查看 stderr tail；切换模板引擎兜底 |
-| 状态长时间"生成中" | OpenCode 真实生成耗时 30–120s | 等待；`REAL_E2E_TIMEOUT_MS` 可调 |
+| 状态长时间"生成中" | OpenCode 真实生成耗时较长（V4-pro 约 3–6 分钟，含重试） | 等待；`REAL_E2E_TIMEOUT_MS` 默认 600s 可调 |
 | 首页 Diagnostics 全灰 | API 未启动或 key 未配置 | `npm run dev:api:llm` 加载 `.env`；检查 `/health/deep` |
 | `npm run test:e2e:real` 输出 `skipped` | 真实栈未就绪 | 检查 `.env` 与 API 进程；就绪后会真实生成 |
 

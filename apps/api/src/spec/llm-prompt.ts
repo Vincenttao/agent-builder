@@ -10,14 +10,17 @@ const AGENT_SCHEMA_DESC =
   'openjiuwen_agent_type (string, 默认 react_agent), system_prompt (string, 非空), ' +
   'model {provider, model_name, temperature}, ' +
   'tools [{name, description, input_schema, output_schema}], ' +
-  'memory {enabled, type (short_term|none)}, examples [], acceptance_checks [].';
+  'memory {enabled, type (short_term|none)}, ' +
+  'examples [{input (string), expected_behavior (string)}], acceptance_checks [string].';
 
 const AGENT_RULES = 'tools 数组至少 1 个工具；system_prompt 非空；name 非空。';
 
 const WORKFLOW_SCHEMA_DESC =
-  'workflow_id, name, description, openjiuwen_workflow_type, inputs [], outputs [], ' +
+  'workflow_id, name, description, openjiuwen_workflow_type, ' +
+  'inputs [{name (string), type (string), required (boolean)}], ' +
+  'outputs [{name (string), type (string)}], ' +
   'nodes [{id, name, type, description, input_schema, output_schema, config}], ' +
-  'edges [{from, to, condition}], acceptance_checks []. ' +
+  'edges [{from, to, condition}], acceptance_checks [string]. ' +
   'node.type 枚举：start, llm, tool, python, condition, export, end.';
 
 const WORKFLOW_RULES =

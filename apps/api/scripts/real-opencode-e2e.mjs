@@ -22,7 +22,7 @@ const API = process.env.API_BASE_URL || 'http://localhost:3001';
 const PROMPT =
   '做一个员工政策问答 Agent，用户输入制度问题后调用 search_policy 工具检索政策条款并给出简明回答。';
 const POLL_INTERVAL_MS = 2000;
-const GEN_TIMEOUT_MS = Number(process.env.REAL_E2E_TIMEOUT_MS || 300_000);
+const GEN_TIMEOUT_MS = Number(process.env.REAL_E2E_TIMEOUT_MS || 600_000);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

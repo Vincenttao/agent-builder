@@ -61,11 +61,11 @@ P3 Milestone 1 基本达成，但 P3 尚未完成。
 | 能力 | 配置 |
 |---|---|
 | Spec LLM | `SPEC_LLM_PROVIDER=openai-compatible` |
-| Spec 模型 | `SPEC_LLM_MODEL=deepseek-chat` |
+| Spec 模型 | `SPEC_LLM_MODEL=deepseek-v4-pro` |
 | 代码生成 | `CODEGEN_ENGINE=opencode` |
 | OpenCode 模式 | `OPENCODE_REQUIRE_REAL=true` |
 | OpenCode CLI | `OPENCODE_CLI_STYLE=v1` |
-| OpenCode 模型 | `OPENCODE_PROVIDER=deepseek` / `OPENCODE_MODEL=deepseek-chat` |
+| OpenCode 模型 | `OPENCODE_PROVIDER=deepseek` / `OPENCODE_MODEL=deepseek-v4-pro` |
 
 密钥未写入文档、日志或提交。
 

@@ -69,7 +69,7 @@ cp apps/api/.env.example apps/api/.env
 SPEC_LLM_PROVIDER=openai-compatible       # mock（无密钥）或 openai-compatible
 SPEC_LLM_BASE_URL=https://api.deepseek.com/v1
 SPEC_LLM_API_KEY=sk-xxxxxxxxxxxxxxxx      # DeepSeek API key
-SPEC_LLM_MODEL=deepseek-chat
+SPEC_LLM_MODEL=deepseek-v4-pro
 
 # ── 代码生成引擎 ──
 CODEGEN_ENGINE=template                   # template（默认，快速稳定）
@@ -78,7 +78,7 @@ CODEGEN_ENGINE=template                   # template（默认，快速稳定）
 # OPENCODE_REQUIRE_REAL=true
 # OPENCODE_API_KEY=sk-xxxxxxxxxxxxxxxx    # opencode 使用的模型 key
 # OPENCODE_PROVIDER=deepseek
-# OPENCODE_MODEL=deepseek-chat
+# OPENCODE_MODEL=deepseek-v4-pro
 
 # ── Runtime ──
 PORT=3001
