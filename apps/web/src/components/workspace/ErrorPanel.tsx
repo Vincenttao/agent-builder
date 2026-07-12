@@ -1,9 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GenerationEvent, GenerationDto } from '@agent-builder/shared-contracts';
 import { EventType } from '@agent-builder/shared-contracts';
-import { repairGeneration, fallbackGeneration } from '@/lib/api';
+import { repairGeneration, fallbackGeneration, getRuns, getRunLog } from '@/lib/api';
+
+interface RunLogTail {
+  stdout: string;
+  stderr: string;
+  run_id: string;
+}
 
 export function ErrorPanel({
   events,
@@ -17,6 +23,7 @@ export function ErrorPanel({
   const [repairing, setRepairing] = useState(false);
   const [fallingBack, setFallingBack] = useState(false);
   const [repairResult, setRepairResult] = useState<string | null>(null);
+  const [runLog, setRunLog] = useState<RunLogTail | null>(null);
 
   const errorEvent = events.find((e) => e.type === EventType.Error);
   const errorCode = (errorEvent?.payload?.error_code as string) ?? gen?.error_code ?? 'UNKNOWN';
@@ -25,6 +32,25 @@ export function ErrorPanel({
   const sandboxEvents = events.filter(
     (e) => e.type === EventType.SandboxFinished || e.type === EventType.TestFinished,
   );
+
+  // P3-009: surface the latest run's stdout/stderr tail so a failure is
+  // explainable from the UI (not just event summaries).
+  useEffect(() => {
+    if (!gen) return;
+    let cancelled = false;
+    getRuns(gen.generation_id)
+      .then(async (runs) => {
+        if (!runs.length || cancelled) return;
+        const latest = runs[0]; // listByGeneration is DESC by started_at
+        const [out, err] = await Promise.all([
+          getRunLog(gen.generation_id, latest.id, 'stdout', 200),
+          getRunLog(gen.generation_id, latest.id, 'stderr', 200),
+        ]);
+        if (!cancelled) setRunLog({ stdout: out.content, stderr: err.content, run_id: latest.id });
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [gen]);
 
   // P3-003: offer template fallback only when the generation ran (or attempted)
   // OpenCode — a template-engine failure has nothing to fall back to.
@@ -82,6 +108,27 @@ export function ErrorPanel({
               </li>
             ))}
           </ul>
+        </details>
+      )}
+      {runLog && (runLog.stdout || runLog.stderr) && (
+        <details className="mt-3 text-[11px] text-red-700" data-testid="run-log-tail">
+          <summary className="cursor-pointer">最近一次运行的 stdout / stderr（tail 200）</summary>
+          {runLog.stdout && (
+            <div className="mt-2">
+              <p className="font-mono text-zinc-500">stdout:</p>
+              <pre className="mt-1 max-h-40 overflow-auto rounded bg-zinc-950 p-2 text-[10px] leading-4 text-zinc-100">
+                {runLog.stdout || '(空)'}
+              </pre>
+            </div>
+          )}
+          {runLog.stderr && (
+            <div className="mt-2">
+              <p className="font-mono text-zinc-500">stderr:</p>
+              <pre className="mt-1 max-h-40 overflow-auto rounded bg-zinc-950 p-2 text-[10px] leading-4 text-red-200">
+                {runLog.stderr}
+              </pre>
+            </div>
+          )}
         </details>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-3">

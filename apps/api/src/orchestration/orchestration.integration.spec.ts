@@ -361,4 +361,17 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     expect(manifest.test_command).toContain('pytest');
     expect(typeof manifest.example_input).toBe('string');
   });
+
+  // P3-009: diff endpoint returns the array shape declared by VersionDiffResponse
+  it('#10 diff endpoint returns an array of file diffs', async () => {
+    const id = await createAndWait('塔罗占卜 Agent', 'agent');
+    const versions = (await request(httpServer).get(`/api/generations/${id}/versions`).expect(200)).body;
+    const v1 = versions[0];
+    const diff = (await request(httpServer)
+      .get(`/api/generations/${id}/versions/${v1.id}/diff?base=${v1.id}`)
+      .expect(200)).body;
+    expect(Array.isArray(diff)).toBe(true);
+    // Diffing a version against itself yields only unchanged files.
+    expect(diff.every((f: { status: string }) => f.status === 'unchanged')).toBe(true);
+  });
 });

@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { GenerationDto, FileTreeNode, FileContentResponse } from '@agent-builder/shared-contracts';
+import type { GenerationDto, FileTreeNode, FileContentResponse, ProjectVersion } from '@agent-builder/shared-contracts';
 import { EventType, GenerationStatus } from '@agent-builder/shared-contracts';
-import { getGeneration, getFileTree, getFileContent, exportProject, exportDownloadUrl } from '@/lib/api';
+import { getGeneration, getFileTree, getFileContent, exportProject, exportDownloadUrl, getVersions } from '@/lib/api';
 import { useGenerationEvents } from '@/lib/use-generation-events';
 import { GenerationTimeline } from '@/components/workspace/GenerationTimeline';
 import { CompletionSummary } from '@/components/workspace/CompletionSummary';
 import { ErrorPanel } from '@/components/workspace/ErrorPanel';
+import { VersionList } from '@/components/workspace/VersionList';
 import { AgentTestPanel } from '@/components/agent/AgentTestPanel';
 import { WorkflowRunPanel } from '@/components/workflow/WorkflowRunPanel';
 import { FileTree } from '@/components/source/FileTree';
@@ -43,6 +44,7 @@ export function GenerationWorkspace({ id }: { id: string }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [versions, setVersions] = useState<ProjectVersion[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +53,18 @@ export function GenerationWorkspace({ id }: { id: string }) {
       .catch((e) => { if (!cancelled) setGenError((e as Error).message); });
     return () => { cancelled = true; };
   }, [id]);
+
+  // P3-009: fetch versions on completion so the summary carries the active
+  // version and the version list + diff panel can render.
+  const isCompleted = status === GenerationStatus.Completed;
+  useEffect(() => {
+    if (!isCompleted) return;
+    let cancelled = false;
+    getVersions(id)
+      .then((vs) => { if (!cancelled) setVersions(vs); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [id, isCompleted]);
 
   // Refresh the file tree as generation events arrive. A single early fetch can
   // race with file writes and leave the Source tab empty after completion.
@@ -134,10 +148,13 @@ export function GenerationWorkspace({ id }: { id: string }) {
     window.location.reload();
   }
 
-  const isCompleted = status === GenerationStatus.Completed;
   const isFailed = status === GenerationStatus.Failed;
   const isWorkflow = gen?.type === 'workflow';
   const loadError = genError ?? treeError;
+  // P3-009: the active version (passed through to the completion summary).
+  const activeVersion = gen?.active_version_id
+    ? versions.find((v) => v.id === gen.active_version_id) ?? null
+    : null;
 
   return (
     <div className="flex h-screen flex-col bg-zinc-100 text-zinc-950">
@@ -199,7 +216,10 @@ export function GenerationWorkspace({ id }: { id: string }) {
             <GenerationTimeline events={events} />
           </div>
           <div className="space-y-3 px-3 pb-3">
-            {isCompleted && <CompletionSummary events={events} version={null} />}
+            {isCompleted && <CompletionSummary events={events} version={activeVersion} />}
+            {isCompleted && (
+              <VersionList generationId={id} versions={versions} activeVersionId={gen?.active_version_id ?? null} />
+            )}
             {isFailed && <ErrorPanel events={events} gen={gen} onRepair={handleRepair} />}
           </div>
         </aside>

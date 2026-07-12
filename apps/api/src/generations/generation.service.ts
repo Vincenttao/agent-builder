@@ -15,6 +15,7 @@ import type {
   AgentSpec,
   WorkflowSpec,
   AgentBuilderManifest,
+  VersionDiffFile,
 } from '@agent-builder/shared-contracts';
 import {
   GenerationStatus,
@@ -285,7 +286,7 @@ export class GenerationService {
     _generationId: string,
     baseVersionId: string,
     targetVersionId: string,
-  ): { files: { path: string; status: string; diff?: string }[] } {
+  ): { files: VersionDiffFile[] } {
     const base = this.versionRepo.getById(baseVersionId);
     const target = this.versionRepo.getById(targetVersionId);
     if (!base || !target) {
@@ -325,12 +326,12 @@ export class GenerationService {
 function computeVersionDiff(
   basePath: string,
   targetPath: string,
-): { files: { path: string; status: string; diff?: string }[] } {
+): { files: VersionDiffFile[] } {
   const baseFiles = scanRelative(basePath);
   const targetFiles = scanRelative(targetPath);
 
   const allPaths = new Set([...baseFiles.keys(), ...targetFiles.keys()]);
-  const results: { path: string; status: string; diff?: string }[] = [];
+  const results: VersionDiffFile[] = [];
 
   for (const rel of [...allPaths].sort()) {
     const inBase = baseFiles.has(rel);

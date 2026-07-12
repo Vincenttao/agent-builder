@@ -15,6 +15,7 @@ import {
   type GenerationDto,
   toGenerationDto,
   type VersionListResponse,
+  type VersionDiffResponse,
   type AgentBuilderManifest,
 } from '@agent-builder/shared-contracts';
 import { toWorkspaceRelative } from '../common/workspace';
@@ -115,12 +116,12 @@ export class GenerationsController {
     @Param('id') id: string,
     @Param('versionId') versionId: string,
     @Query('base') baseVersionId: string,
-  ) {
+  ): VersionDiffResponse {
     this.genService.getByIdOrThrow(id);
     if (!baseVersionId) {
       throw new BadRequestException({ error_code: 'MISSING_BASE', message: '缺少 base 参数' });
     }
-    return this.genService.diffVersions(id, baseVersionId, versionId);
+    return this.genService.diffVersions(id, baseVersionId, versionId).files;
   }
 
   // ─── Phase 14: Run logs ──────────────────────────────────────────
