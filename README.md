@@ -1,8 +1,8 @@
-# Agent Builder (P2)
+# Agent Builder (P3)
 
 自然语言生成基于 **OpenJiuwen** 的 Python Agent / Workflow 工程：解析需求 → Spec 确认 → 生成项目 → 运行测试 → 展示源码与运行效果 → 导出代码包。
 
-> P2 范围（依据 `docs/prd/PRD-v0.3-agent-builder.md` + `docs/technical/p2_plan.md`）：仅生成 Agent 与 Workflow；不做 Skills 独立创建、Agent Store、多租户或生产部署。
+> 范围（依据 `docs/prd/PRD-v0.3-agent-builder.md` + `docs/technical/p2_plan.md` + `docs/technical/p3_work_items.md`）：生成 Agent 与 Workflow；P2 完成统一 LLM 解析 / Draft 确认 / OpenCode 生成 / 体验增强；P3 完成真实生成安全闭环、演示恢复闭环与可重复演示（fallback、manifest 消费、诊断页、版本/Diff/日志 UI、真实链路 E2E、runbook）。不做 Skills 独立创建、Agent Store、多租户。
 
 ## 仓库结构
 
@@ -99,11 +99,12 @@ npm run dev:web
 **步骤 3：验证**
 
 ```bash
-curl http://localhost:3001/health    # → {"status":"ok","service":"agent-builder-api","version":"0.1.0"}
-curl -I http://localhost:3000        # → HTTP 200
+curl http://localhost:3001/health        # → {"status":"ok","service":"agent-builder-api","version":"0.1.0"}
+curl http://localhost:3001/health/deep    # → P3 诊断：LLM key 存在性 / OpenCode 配置 / Docker / runner（不输出密钥值）
+curl -I http://localhost:3000             # → HTTP 200
 ```
 
-打开 `http://localhost:3000`，选择 Agent/Workflow 类型，输入需求，开始生成。
+打开 `http://localhost:3000`，首页左侧 "Runtime Diagnostics" 全绿表示真实栈就绪。选择 Agent/Workflow 类型，输入需求，开始生成。
 
 ### 方式 2 — Docker 全栈部署
 
@@ -284,6 +285,22 @@ rm -rf workspace/generated workspace/runs workspace/exports workspace/metadata.d
 | 路径安全 | URL 编码穿透、null byte 注入、反斜杠穿透等编码变体防御 |
 | Error Boundary | 全局 React Error Boundary，JS 异常不白屏 |
 
+## P3：演示恢复与可重复演示
+
+真实 OpenCode 生成失败时可从 UI 恢复并完成演示，内部同事可按 `docs/technical/p3_demo_runbook.md` 复现。新增能力：
+
+| 能力 | 说明 |
+|---|---|
+| 模板 fallback | `POST /api/generations/:id/fallback` 用 TemplateEngine 重生成失败任务（mock 模式）；ErrorPanel 一键"切换模板引擎"按钮；事件流记录原始失败原因与 fallback reason |
+| Manifest 消费 | `GET /:id/manifest`；smoke test 用 manifest `test_command` 安全映射到 allowlist argv；Agent/Workflow 测试台预填 `example_input`；runner 用 `entrypoint` 定位 spec |
+| Workflow fallback 状态 | WorkflowRunPanel 显示 `mock_fallback` amber banner + 原因，与 AgentTestPanel 一致 |
+| 真实链路 E2E | `npm run test:e2e:real`：读 `/health/deep` 自动 skip；就绪时输出 generation id / 耗时 / 文件清单 / smoke 状态 / engine |
+| 诊断页 | `GET /health/deep` 输出 LLM key 存在性、base URL/model、OpenCode engine+CLI+key、Docker 可用性、allowlist 前缀数、Python runner；首页 Diagnostics 组件实时展示绿/灰就绪点 |
+| 版本/Diff/日志 UI | CompletionSummary 传入 active version；VersionList 列出全部版本（激活 + Diff 对比）；ErrorPanel 显示最近一次运行 stdout/stderr tail |
+| 失败重试安全 | `promoteVersion()` 仅在 smoke test 通过时调用，失败版本不会成为 active version |
+| 真实命令 allowlist | `...` 省略号不再误判为路径逃逸；opencode v0/v1 前缀均纳入 allowlist |
+| 内部 runbook | `docs/technical/p3_demo_runbook.md`：标准 prompt、4 条恢复路径、截图 checklist、故障表 |
+
 ## 测试
 
 ```bash
@@ -293,6 +310,7 @@ npm run test:api
 npm run test:web
 npm run test:python   # 等价于 cd services/python-runner && python -m pytest
 npm run test:e2e      # Playwright 端到端
+npm run test:e2e:real # P3 真实 OpenCode + LLM（无密钥自动 skip，输出报告）
 npm run lint          # ESLint（全仓）
 npm run typecheck     # tsc --noEmit（各 workspace）
 ```
@@ -302,10 +320,11 @@ npm run typecheck     # tsc --noEmit（各 workspace）
 | 套件 | 数量 |
 |------|------|
 | contracts | 15 |
-| api | 144 |
-| web | 20 |
+| api | 155 |
+| web | 27 |
 | python | 10 |
 | e2e | 4（Tarot Agent / Presales Workflow / Weather Agent / Contract Review Workflow） |
+| e2e:real | 真实链路（DeepSeek + OpenCode + Docker），无密钥自动 skip |
 
 lint / typecheck 全绿。
 
@@ -327,6 +346,8 @@ lint / typecheck 全绿。
 - `docs/technical/runtime_and_sandbox.md`
 - `docs/technical/p2_plan.md`
 - `docs/technical/p2_defects.md`
+- `docs/technical/p3_work_items.md`
+- `docs/technical/p3_demo_runbook.md`
 - `docs/technical/p0_implementation_plan.md`
 - `docs/technical/p0_acceptance_report.md`
 - `docs/technical/p1_implementation_report.md`
