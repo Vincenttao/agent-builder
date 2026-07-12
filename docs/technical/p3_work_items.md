@@ -134,10 +134,10 @@ manifest 示例：
 
 | 工作点 | 状态 | 当前证据 | 仍需补充 |
 |---|---|---|---|
-| P3-001 修复真实 OpenCode sandbox allowlist | 基本完成 | `...` 不再触发路径逃逸误判；`opencode run --model deepseek/deepseek-chat` 有回归测试 | 仍需覆盖 `--json`、更长 prompt、更多真实 v1/v3 命令形态 |
-| P3-002 修复 OpenCode prompt 传递方式 | 部分完成 | v1/v3 读取 `.agent_builder/prompt.md`，`buildPrompt()` 已包含 manifest、smoke test、README、禁止框架和目录结构约束 | 默认 `OPENCODE_CLI_STYLE=v0` 仍生成 `opencode -p ...`，当前 allowlist 不允许该前缀；v0/v3 未完整验证 |
-| P3-003 真实 OpenCode fallback 策略 | 部分完成 | OpenCode 不可用时可回退 TemplateEngine，并记录 fallback 事件 | 真实 OpenCode 失败后 UI 仍只有 repair，没有一键 fallback 到 TemplateEngine |
-| P3-004 修复 smoke test 失败误晋级 | 未完成 | 缺测试文件、依赖安装失败会返回 failed；安装失败会更新版本 test_status | 有测试文件但 pytest 失败时仍会调用 `promoteVersion()`，失败版本仍可能成为 active version |
+| P3-001 修复真实 OpenCode sandbox allowlist | ✅ 完成 | `...` 不再触发路径逃逸误判；regex `/(?:^\|/)\\.\\.(?:$\|/)/`；有回归测试（含 opencode model path、ellipsis、路径逃逸拒绝） | — |
+| P3-002 修复 OpenCode prompt 传递方式 | ✅ 完成 | 默认 v1；v0 兼容前缀已加入 allowlist；instruction 简化为文件读取 | — |
+| P3-003 真实 OpenCode fallback 策略 | 部分完成 | OpenCode 不可用时可回退 TemplateEngine，并记录 fallback 事件 | 真实 OpenCode 失败后 UI 仍只有 repair，没有一键 fallback |
+| P3-004 修复 smoke test 失败误晋级 | ✅ 完成 | `promoteVersion()` 仅在 `passed && latestVersion` 时调用；失败版本不 promote | — |
 | P3-005 完成 manifest 契约消费 | 部分完成 | TemplateEngine 和 OpenCode prompt 都要求生成 manifest；runner 会尝试读取 manifest 文件 | runner 没有实际使用 `entrypoint/test_command/run_command/example_input`；UI 未展示 runtime、entrypoint、example input |
 | P3-006 真实运行状态语义 | 部分完成 | Python runner fallback 返回 `status: "fallback"`、`mode: "mock_fallback"`；Agent UI 有 fallback 提示 | Workflow UI 未显示 fallback 状态；缺专项 E2E 覆盖 |
 | P3-007 真实链路 E2E | 未完成 | 手动真实端到端已验证 | 缺可一键触发、无密钥自动 skip、输出报告的 `real-opencode` E2E |
@@ -147,56 +147,13 @@ manifest 示例：
 
 ## 五、必须优先修复的问题
 
-### 1. P3-004：pytest 失败版本仍可能成为 active version
+### 1. P3-004：pytest 失败版本不再成为 active version ✅ FIXED (164e615)
 
-当前 `smokeTest()` 中：
+已修复：`promoteVersion()` 仅在 `passed && latestVersion` 时调用。失败版本不会成为 active version。OpenCode 模式下返回 `{passed: false}` 由 retry loop 处理。
 
-```ts
-const passed = result.status === 'success';
-...
-if (latestVersion) {
-  const testOk = passed;
-  await this.genService.promoteVersion(
-    generationId,
-    { ...latestVersion, test_status: testOk ? TestStatus.Passed : TestStatus.Failed },
-  );
-}
-```
+### 2. P3-002：v0 CLI 默认值 ✅ FIXED (164e615)
 
-这段逻辑的问题是：即使 `passed === false`，仍然会调用 `promoteVersion()`。虽然版本 `test_status` 是 failed，但 generation 会被 mark completed，active version 也会指向失败版本。
-
-修复要求：
-
-1. `passed === false` 时绝不调用 `promoteVersion()`。
-2. OpenCode 模式下测试失败应返回 `{ passed: false, output }`，由 retry loop 决定重试或 mark failed。
-3. 非 OpenCode 模式下测试失败继续抛 `TEST_FAILED`。
-4. 增加“有测试文件但 pytest failed”的 orchestration 回归测试。
-
-### 2. P3-002：v0 CLI 默认值与 allowlist 不一致
-
-当前 `buildOpencodeCommand()` 默认 `OPENCODE_CLI_STYLE=v0`：
-
-```ts
-const style = process.env.OPENCODE_CLI_STYLE ?? 'v0';
-...
-return ['opencode', '-p', instruction, '-f', 'json'];
-```
-
-但 `command-allowlist` 只允许：
-
-```ts
-['opencode', 'run']
-['opencode', 'serve']
-```
-
-因此如果环境没有显式配置 `OPENCODE_CLI_STYLE=v1`，真实 OpenCode 默认路径仍会被 allowlist 拒绝。
-
-建议二选一：
-
-1. 将默认值改为 `v1`，与当前本机 `opencode 1.14.48` 和 `.env` 一致。
-2. 或补充 `['opencode', '-p']` allowlist，并明确 v0 仍支持 prompt 文件读取。
-
-优先建议：默认改为 `v1`，保留 v0 作为显式兼容模式。
+默认改为 `v1`，同时将 `['opencode', '-p']` 加入 allowlist 以支持 v0 兼容。
 
 ### 3. P3-003：失败后没有 UI fallback 闭环
 
