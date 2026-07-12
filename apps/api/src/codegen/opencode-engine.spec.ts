@@ -102,6 +102,41 @@ describe('OpenCodeEngine', () => {
 
       fs.rmSync(projectPath, { recursive: true, force: true });
     });
+
+    it('hard-fails when OPENCODE_ALLOW_FALLBACK=false and opencode is unavailable', async () => {
+      const templateEngine = new TemplateEngine();
+      const sandbox = buildSandboxService();
+      // 4th arg allowFallback=false → missing binary must throw, not fall back.
+      const engine = new OpenCodeEngine(templateEngine, sandbox, true, false);
+      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(false);
+
+      const projectPath = tmpProject();
+      await expect(
+        engine.generate(
+          TAROT_AGENT_SPEC as AgentSpec,
+          { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+        ),
+      ).rejects.toThrow(/OPENCODE_ALLOW_FALLBACK=false/);
+      // No template files written — the engine did not silently substitute.
+      expect(fs.existsSync(path.join(projectPath, 'src/agents/agent.py'))).toBe(false);
+
+      fs.rmSync(projectPath, { recursive: true, force: true });
+    });
+
+    it('still falls back when OPENCODE_ALLOW_FALLBACK=true (default) and opencode is unavailable', async () => {
+      const templateEngine = new TemplateEngine();
+      const sandbox = buildSandboxService();
+      const engine = new OpenCodeEngine(templateEngine, sandbox, true, true);
+      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(false);
+
+      const projectPath = tmpProject();
+      const result = await engine.generate(
+        TAROT_AGENT_SPEC as AgentSpec,
+        { generationId: 'gen', versionId: 'ver', projectPath, mock: true },
+      );
+      expect(result.engine).toBe('template');
+      fs.rmSync(projectPath, { recursive: true, force: true });
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -155,7 +190,7 @@ describe('OpenCodeEngine', () => {
       expect(runReq.command[1]).toBe('run');
       expect(runReq.command).toContain('--dangerously-skip-permissions');
       expect(runReq.command).toContain('--model');
-      expect(runReq.command).toContain('deepseek/deepseek-chat');
+      expect(runReq.command).toContain('deepseek/deepseek-v4-pro');
       // P3-002: command now references the prompt file, not inline constraints.
       const lastArg = runReq.command[runReq.command.length - 1];
       expect(lastArg).toContain('.agent_builder/prompt.md');

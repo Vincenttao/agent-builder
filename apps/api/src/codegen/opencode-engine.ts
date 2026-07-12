@@ -48,6 +48,9 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     private readonly templateEngine: TemplateEngine,
     private readonly sandbox: SandboxService,
     private readonly requireReal: boolean = false,
+    /** When requireReal=true but the opencode binary is missing, fall back to
+     * TemplateEngine (true, default) or hard-fail (false). P3: OPENCODE_ALLOW_FALLBACK. */
+    private readonly allowFallback: boolean = true,
   ) {}
 
   isOpencodeAvailable(): boolean {
@@ -68,6 +71,15 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     }
 
     if (!this.isOpencodeAvailable()) {
+      // P3: OPENCODE_ALLOW_FALLBACK=false makes a missing opencode binary a
+      // hard failure (no silent TemplateEngine substitution), so a "must be
+      // real opencode" demo fails loudly instead of looking like opencode.
+      if (!this.allowFallback) {
+        throw new AgentBuilderError(
+          ErrorCode.CodeGenerationFailed,
+          'OpenCode 不可用（opencode 二进制未找到），且 OPENCODE_ALLOW_FALLBACK=false，拒绝回退到 TemplateEngine',
+        );
+      }
       this.logger.warn('OpenCode unavailable — falling back to TemplateEngine.');
       callbacks?.onEvent?.(
         EventType.OpencodeFinished,
@@ -133,7 +145,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     const envAllowlist = this.buildEnvAllowlist();
 
     // Build opencode command with model flag
-    const opencodeModel = process.env.OPENCODE_MODEL ?? 'deepseek-chat';
+    const opencodeModel = process.env.OPENCODE_MODEL ?? 'deepseek-v4-pro';
     const opencodeProvider = process.env.OPENCODE_PROVIDER ?? 'deepseek';
     const modelArg = `${opencodeProvider}/${opencodeModel}`;
 
