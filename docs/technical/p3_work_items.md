@@ -1,10 +1,41 @@
 # Agent Builder P3 工作点
 
-版本：v0.1 | 日期：2026-07-12
+版本：v0.2 | 日期：2026-07-12
 
-来源：真实 LLM + 真实 OpenCode 配置下的无头浏览器验收。
+来源：对照当前代码、P3 原始验收记录、真实 LLM + 真实 OpenCode 手动验证结果。
 
-## 一、本轮真实链路验证
+## 一、当前结论
+
+P3 原始记录中的关键失败：
+
+```text
+真实 OpenCode 生成失败：命令被沙箱拒绝：command contains absolute path or ..
+```
+
+已经不是当前主状态。当前工作树已经可以在真实配置下跑通一个 Agent 样例：
+
+| 能力 | 当前结果 |
+|---|---|
+| 真实 LLM Spec Parser | 已验证通过 |
+| 真实 OpenCode v1 生成 Agent | 已验证通过 |
+| Docker sandbox smoke test | 已验证通过 |
+| 生成物 manifest / README / 源码 / smoke test | 已验证通过 |
+| 生成物文件属主可清理 | 已修复并验证 |
+
+但 P3 还不能判定全部完成。主要缺口集中在：
+
+1. `pytest` 失败版本仍可能被 promote 为 active version，P3-004 还未完全修复。
+2. 真实 OpenCode 失败后的 UI fallback 闭环不完整。
+3. manifest 还没有被 runner/UI 充分消费。
+4. 真实链路专项 E2E、诊断页、版本/Diff/日志 UI、runbook 尚未补齐。
+
+因此，当前状态应定义为：
+
+```text
+P3 Milestone 1 基本达成，但 P3 尚未完成。
+```
+
+## 二、真实链路验证状态
 
 ### 环境配置
 
@@ -21,339 +52,243 @@
 
 密钥未写入文档、日志或提交。
 
-### 验收样例
+### 已验证样例
 
 样例 prompt：
 
 ```text
-做一个企业制度问答 Agent。用户输入关于请假、报销、远程办公的问题时，Agent 调用 search_policy 工具检索制度条款，再用简洁中文回答，并列出引用的制度名称和建议下一步动作。
+做一个员工政策问答 Agent，用户输入制度问题后调用工具检索政策条款并给出简明回答。
 ```
 
-无头浏览器执行路径：
+验证路径：
 
 ```text
-首页
--> 输入 Agent prompt
--> 创建 Draft
--> 等待真实 LLM 解析 Spec
--> Spec 确认
--> 进入 Generation Workspace
--> 等待真实 OpenCode 生成
+清理 workspace
+-> 真实 LLM 解析 Spec
+-> 真实 OpenCode v1 生成
+-> Docker sandbox 执行 OpenCode
+-> pip install -e . --no-build-isolation
+-> pytest tests/ -q
+-> generation completed
 ```
 
-### 验收结果
-
-| 阶段 | 结果 | 说明 |
-|---|---|---|
-| 首页提交 | 通过 | 无头 Chromium 可正常进入 Draft 页面 |
-| 真实 LLM Spec 解析 | 通过 | Draft 页面显示 `llm / deepseek-chat` |
-| Spec 质量 | 基本通过 | 生成了 `企业制度问答助手`，包含 `search_policy` 工具和结构化输入输出 schema |
-| Spec 确认 | 通过 | 确认后创建 generation |
-| 真实 OpenCode 生成 | 失败 | sandbox allowlist 拒绝命令：`command contains absolute path or ..` |
-| Agent 源码查看 | 未到达 | OpenCode 未生成源码文件 |
-| Agent 测试台 | 未到达 | generation failed，无 active version |
-| 导出 | 未到达 | 无可导出版本 |
-
-生成记录：
+### 验证结果
 
 | 字段 | 值 |
 |---|---|
-| Draft | `draft_011bdd06-3b6c-4345-b8c5-8ed5b4e8f2d4` |
-| Generation | `gen_e4824318-5457-4f39-806c-891131f5a968` |
-| 最终状态 | `failed` |
-| 错误码 | `CODE_GENERATION_FAILED` |
-| 错误信息 | `命令被沙箱拒绝：command contains absolute path or ..` |
+| Generation | `gen_45c4eedb-8ab5-43b9-903a-25c8a3c97166` |
+| Version | `ver_6e37961d-a00e-4621-941e-fb722f2f54d7` |
+| 最终状态 | `completed` |
+| 测试状态 | `passed` |
+| mock_mode | `false` |
+| 生成文件数 | 15 |
+| 后端 smoke test | `11 passed` |
 
-关键事件：
+生成物包含：
 
 ```text
-1. plan_created
-2. command_started: 开始生成代码：企业制度问答助手
-3. opencode_started: OpenCode 会话启动
-4. command_started: [自动修复] 开始生成代码：企业制度问答助手
-5. opencode_started: OpenCode 会话启动
-6. command_started: [自动修复] 开始生成代码：企业制度问答助手
-7. opencode_started: OpenCode 会话启动
-8. error: 命令被沙箱拒绝：command contains absolute path or ..
+agent_builder_manifest.json
+README.md
+pyproject.toml
+src/main.py
+src/openjiuwen_runtime/__init__.py
+src/agents/agent.py
+tests/test_agent_smoke.py
 ```
 
-本轮截图保存在本机临时目录：
+manifest 示例：
 
-| 文件 | 说明 |
+```json
+{
+  "schema_version": "1.0",
+  "project_type": "agent",
+  "entrypoint": "src/agents/agent.py",
+  "test_command": "pytest tests/test_agent_smoke.py -q",
+  "run_command": "python src/main.py",
+  "example_input": "请查询年假政策",
+  "runtime": {
+    "framework": "openjiuwen",
+    "mode": "mock-compatible"
+  }
+}
+```
+
+## 三、测试结果
+
+最新已验证命令：
+
+| 命令 | 结果 | 说明 |
+|---|---|---|
+| `npm --workspace @agent-builder/api run typecheck` | 通过 | API TypeScript 类型检查通过 |
+| `npm --workspace @agent-builder/api run test -- opencode-engine.spec.ts orchestration.integration.spec.ts docker-command-builder.spec.ts openai-compatible-spec-parser.spec.ts` | 通过 | 36 tests passed |
+| `node --env-file=apps/api/.env ... verify-real-llm.ts` | 通过 | 真实 LLM 返回合法 Spec 并通过 validation |
+| 真实端到端脚本 | 通过 | 真实 LLM + real OpenCode + smoke test completed |
+
+注意：
+
+1. API 集成测试需要本地监听权限，普通受限沙箱会报 `listen EPERM`，需在具备本地端口权限的环境运行。
+2. 真实端到端验证依赖网络、Docker socket、`apps/api/.env` 中的真实密钥和 `agent-builder-sandbox:latest` 镜像。
+3. 目前还没有可复用的 `real-opencode` E2E 命令，真实验证仍是手动脚本形态。
+
+## 四、P3 完成度矩阵
+
+| 工作点 | 状态 | 当前证据 | 仍需补充 |
+|---|---|---|---|
+| P3-001 修复真实 OpenCode sandbox allowlist | 基本完成 | `...` 不再触发路径逃逸误判；`opencode run --model deepseek/deepseek-chat` 有回归测试 | 仍需覆盖 `--json`、更长 prompt、更多真实 v1/v3 命令形态 |
+| P3-002 修复 OpenCode prompt 传递方式 | 部分完成 | v1/v3 读取 `.agent_builder/prompt.md`，`buildPrompt()` 已包含 manifest、smoke test、README、禁止框架和目录结构约束 | 默认 `OPENCODE_CLI_STYLE=v0` 仍生成 `opencode -p ...`，当前 allowlist 不允许该前缀；v0/v3 未完整验证 |
+| P3-003 真实 OpenCode fallback 策略 | 部分完成 | OpenCode 不可用时可回退 TemplateEngine，并记录 fallback 事件 | 真实 OpenCode 失败后 UI 仍只有 repair，没有一键 fallback 到 TemplateEngine |
+| P3-004 修复 smoke test 失败误晋级 | 未完成 | 缺测试文件、依赖安装失败会返回 failed；安装失败会更新版本 test_status | 有测试文件但 pytest 失败时仍会调用 `promoteVersion()`，失败版本仍可能成为 active version |
+| P3-005 完成 manifest 契约消费 | 部分完成 | TemplateEngine 和 OpenCode prompt 都要求生成 manifest；runner 会尝试读取 manifest 文件 | runner 没有实际使用 `entrypoint/test_command/run_command/example_input`；UI 未展示 runtime、entrypoint、example input |
+| P3-006 真实运行状态语义 | 部分完成 | Python runner fallback 返回 `status: "fallback"`、`mode: "mock_fallback"`；Agent UI 有 fallback 提示 | Workflow UI 未显示 fallback 状态；缺专项 E2E 覆盖 |
+| P3-007 真实链路 E2E | 未完成 | 手动真实端到端已验证 | 缺可一键触发、无密钥自动 skip、输出报告的 `real-opencode` E2E |
+| P3-008 演示诊断页 | 未完成 | 基础 `/health` 存在 | 缺 `/health/deep` 或 `/demo/diagnostics`；首页无 LLM/OpenCode/Docker/Python runner 诊断 |
+| P3-009 版本、Diff、日志 UI | 部分完成 | 后端 versions/diff/runs/log API 已存在，前端 API helper 已存在；CompletionSummary 可显示 engine/fallback | 工作区未消费 versions/diff/runs/log；`CompletionSummary` 仍传 `version={null}`；ErrorPanel 只展示事件摘要，不展示真实 run log 内容 |
+| P3-010 内部演示 runbook | 未完成 | 本文档记录了当前状态 | 缺 `docs/technical/p3_demo_runbook.md`，缺标准 prompt、恢复命令和截图 checklist |
+
+## 五、必须优先修复的问题
+
+### 1. P3-004：pytest 失败版本仍可能成为 active version
+
+当前 `smokeTest()` 中：
+
+```ts
+const passed = result.status === 'success';
+...
+if (latestVersion) {
+  const testOk = passed;
+  await this.genService.promoteVersion(
+    generationId,
+    { ...latestVersion, test_status: testOk ? TestStatus.Passed : TestStatus.Failed },
+  );
+}
+```
+
+这段逻辑的问题是：即使 `passed === false`，仍然会调用 `promoteVersion()`。虽然版本 `test_status` 是 failed，但 generation 会被 mark completed，active version 也会指向失败版本。
+
+修复要求：
+
+1. `passed === false` 时绝不调用 `promoteVersion()`。
+2. OpenCode 模式下测试失败应返回 `{ passed: false, output }`，由 retry loop 决定重试或 mark failed。
+3. 非 OpenCode 模式下测试失败继续抛 `TEST_FAILED`。
+4. 增加“有测试文件但 pytest failed”的 orchestration 回归测试。
+
+### 2. P3-002：v0 CLI 默认值与 allowlist 不一致
+
+当前 `buildOpencodeCommand()` 默认 `OPENCODE_CLI_STYLE=v0`：
+
+```ts
+const style = process.env.OPENCODE_CLI_STYLE ?? 'v0';
+...
+return ['opencode', '-p', instruction, '-f', 'json'];
+```
+
+但 `command-allowlist` 只允许：
+
+```ts
+['opencode', 'run']
+['opencode', 'serve']
+```
+
+因此如果环境没有显式配置 `OPENCODE_CLI_STYLE=v1`，真实 OpenCode 默认路径仍会被 allowlist 拒绝。
+
+建议二选一：
+
+1. 将默认值改为 `v1`，与当前本机 `opencode 1.14.48` 和 `.env` 一致。
+2. 或补充 `['opencode', '-p']` allowlist，并明确 v0 仍支持 prompt 文件读取。
+
+优先建议：默认改为 `v1`，保留 v0 作为显式兼容模式。
+
+### 3. P3-003：失败后没有 UI fallback 闭环
+
+当前 ErrorPanel 只有“修复并重试”。演示现场如果真实 OpenCode 因模型、网络、CLI 或 sandbox 环境失败，操作者还不能从 UI 继续 template fallback。
+
+建议：
+
+1. 新增后端 endpoint，例如 `POST /api/generations/:id/fallback`.
+2. fallback 使用已持久化 Spec 走 TemplateEngine 生成新版本。
+3. 事件流记录原失败原因和 fallback reason。
+4. UI 显示“切换模板引擎完成演示”，并明确标记结果不是真实 OpenCode。
+
+## 六、建议补充工作
+
+### P0
+
+1. 修复 P3-004，保证失败版本不会成为 active version。
+2. 补齐 P3-002 默认 CLI style / allowlist 一致性。
+3. 增加 `opencode` 真实命令形态测试：v1、v3、长 prompt、`--json`、省略号、路径逃逸拒绝。
+
+### P1
+
+1. 增加真实 OpenCode fallback endpoint 和 UI 按钮。
+2. runner 消费 manifest：
+   - 使用 `entrypoint` 定位入口。
+   - 使用 `example_input` 预填 Agent/Workflow 测试输入。
+   - 对 `test_command` 做安全映射后用于 smoke test。
+3. 工作区接入 versions/diff/runs/log API：
+   - 完成页传入 active version。
+   - 新增版本列表。
+   - 新增 diff 面板。
+   - ErrorPanel 可查看 stdout/stderr tail。
+4. WorkflowRunPanel 显示 `mode: mock_fallback` 和 fallback reason。
+
+### P2
+
+1. 新增手动 `real-opencode` E2E：
+   - 有密钥和 OpenCode 时运行。
+   - 无密钥自动 skip。
+   - 输出 generation id、耗时、文件清单、smoke test 状态。
+2. 新增 `/health/deep` 或 `/demo/diagnostics`：
+   - 检查 LLM key 是否存在但不输出值。
+   - 检查 base URL/model。
+   - 检查 OpenCode binary 和 CLI style。
+   - 检查 Docker runner / mock runner。
+   - 检查 sandbox allowlist。
+3. 编写 `docs/technical/p3_demo_runbook.md`。
+
+## 七、演示建议
+
+### 当前可以演示
+
+| 演示档位 | 建议 | 说明 |
+|---|---|---|
+| 真实 LLM Spec 解析 | 可以 | 已可稳定展示非内置 prompt 转 Spec |
+| 真实 OpenCode Agent 生成 | 可以小范围演示 | v1 + DeepSeek + Docker 环境下已验证；仍需操作者熟悉恢复方式 |
+| template/mock 完整闭环 | 可以 | 源码、测试台、导出路径更稳定 |
+
+### 当前不建议承诺
+
+| 承诺 | 原因 |
 |---|---|
-| `/tmp/agent-builder-real-draft.png` | 真实 LLM Spec 确认页 |
-| `/tmp/agent-builder-real-workspace.png` | OpenCode 失败后的工作区 |
+| “真实 OpenCode 任意失败都可现场恢复” | 缺 UI fallback 闭环 |
+| “失败版本不会影响 active version” | P3-004 仍有 promote 风险 |
+| “非开发同事 15 分钟可复现” | 缺 runbook、诊断页和真实 E2E |
+| “Agent/Workflow 两类真实 OpenCode 都稳定” | 当前只验证过一个 Agent 样例，Workflow 真实生成未验证 |
 
-## 二、测试结果
+## 八、建议实施顺序
 
-| 命令 | 结果 | 备注 |
-|---|---|---|
-| `npm run lint` | 通过 | 当前 lint 已恢复 |
-| `npm run typecheck` | 通过 | contracts/api/web/shared typecheck 通过 |
-| `npm run test` | 通过 | contracts 15、api 144、web 20、python 10 通过 |
-| `npm --workspace @agent-builder/web run test:e2e` | 通过 | 4 条 Playwright 主流程通过 |
+### Milestone 1：完成真实生成安全闭环
 
-说明：
+1. P3-004：修复 pytest failed promote bug。
+2. P3-002：统一默认 CLI style 与 allowlist。
+3. P3-001：补齐真实命令形态单测。
+4. 跑真实 Agent 样例和真实 Workflow 样例。
 
-1. 常规测试和 mock E2E 证明基础产品链路没有被破坏。
-2. 常规测试没有覆盖真实 OpenCode v1 命令通过 sandbox allowlist 的场景。
-3. 当前最关键失败只会在真实 OpenCode 配置下暴露。
+完成判定：真实 OpenCode 失败只会导致 retry/failed，不会产生错误 active version。
 
-## 三、演示价值判断
+### Milestone 2：完成演示恢复闭环
 
-### 可以演示的价值
+1. P3-003：fallback endpoint + UI。
+2. P3-005：manifest 消费。
+3. P3-006：Workflow fallback 状态展示。
+4. 跑 Agent 测试台、Workflow 运行和导出。
 
-当前系统已经足够演示以下价值：
+完成判定：真实链路失败时，演示者可以从 UI 明确切换 fallback 并完成源码查看、运行、导出。
 
-1. 自然语言进入 Agent/Workflow 创建入口。
-2. 真实 LLM 可以把非内置需求解析成结构化 Spec。
-3. Spec 确认页能让用户看到模型理解结果。
-4. mock/template 主链路可以完成源码、运行、导出。
-5. 失败路径能在工作区呈现错误，而不是白屏或静默卡死。
+### Milestone 3：完成可重复演示
 
-### 不足以演示的价值
-
-如果演示目标是“真实 LLM + 真实 OpenCode 完整生成一个可运行 Agent”，当前还不够。原因是：
-
-1. 真实 OpenCode 在 sandbox allowlist 层被拦截，还未真正执行。
-2. 失败后没有自动切换到可控 fallback 以保证现场闭环。
-3. 工作区未提供足够明确的“失败原因、修复建议、切换模板引擎”操作。
-4. 版本、diff、运行日志 UI 仍未完整打通。
-5. 真实生成链路缺少专项 E2E 和诊断页面。
-
-建议内部演示分两档：
-
-| 演示档位 | 是否建议 | 说明 |
-|---|---|---|
-| 价值概念演示 | 可以 | 使用真实 LLM Spec 解析 + template/mock 生成闭环 |
-| 真实 OpenCode 生成演示 | 暂不建议 | 需先修复 sandbox allowlist 与 fallback 策略 |
-
-## 四、P3 目标
-
-P3 的目标不是继续堆功能，而是把 P2 demo 从“mock/template 可演示”推进到“真实 LLM + 真实 OpenCode 可重复演示”。
-
-P3 完成定义：
-
-1. 真实 LLM 可以稳定解析非内置 Agent/Workflow prompt。
-2. 真实 OpenCode 可以至少成功生成一个 Agent 和一个 Workflow。
-3. 生成物包含 manifest、README、源码、测试、示例输入。
-4. smoke test 失败不会被误标为通过。
-5. 失败时用户能明确选择 retry、fallback、查看日志或回到 Spec 修改。
-6. 内部同事可以按 runbook 在 15 分钟内完成一次真实链路演示。
-
-## 五、P3 工作点
-
-### P3-001：修复真实 OpenCode sandbox allowlist
-
-**优先级：P0**
-
-**问题：** OpenCode v1 把自然语言 prompt 作为 argv 参数传入，当前 `command-allowlist` 对所有参数执行 `arg.includes('..')` 检查，会把普通文本中的 `...` 误判为路径逃逸。
-
-**工作内容：**
-
-1. 区分路径参数和普通文本参数，不要对 prompt 文本做路径逃逸判断。
-2. 对 `opencode run` 设计专用 allowlist 校验。
-3. 覆盖 `--model deepseek/deepseek-chat`、`--json`、长 prompt、包含省略号的 prompt。
-4. 增加真实命令形态单元测试。
-
-**验收：**
-
-1. 当前真实 OpenCode v1 命令不再被 allowlist 拒绝。
-2. `rm`、`bash -c`、绝对路径文件写入等危险命令仍被拒绝。
-3. 单元测试覆盖误判回归。
-
-### P3-002：修复 OpenCode prompt 传递方式
-
-**优先级：P0**
-
-**问题：** 当前 v1 命令把完整生成说明放在 argv 中，既容易触发 allowlist 误判，也不利于日志和安全审计。
-
-**工作内容：**
-
-1. 优先让 OpenCode 读取 `.agent_builder/prompt.md`，不要把完整 prompt 作为 argv 文本传入。
-2. `buildPrompt()` 写入 manifest、smoke test、README、禁止框架、目录结构等完整约束。
-3. v0/v1/v3 CLI 风格统一使用同一份 prompt 文件。
-4. OpenCode 命令只保留必要 flags，例如 model、format、权限策略。
-
-**验收：**
-
-1. `.agent_builder/prompt.md` 是唯一完整生成指令来源。
-2. 不同 CLI 风格不会丢失 manifest/smoke test 约束。
-3. OpenCode stderr/stdout 日志不包含密钥。
-
-### P3-003：真实 OpenCode fallback 策略
-
-**优先级：P0**
-
-**问题：** 当前真实 OpenCode 失败后只 retry，最终 failed；演示现场无法继续完成源码查看、测试台、导出。
-
-**工作内容：**
-
-1. 当 OpenCode 被本地环境或 CLI 问题阻断时，允许用户一键切换 TemplateEngine。
-2. 标准 demo 可以配置自动 fallback，但 UI 必须明确标记。
-3. 失败面板显示：失败原因、retry、fallback、查看日志、回到 Spec 修改。
-4. fallback 后保留原失败版本和事件，用于解释真实链路问题。
-
-**验收：**
-
-1. 真实 OpenCode 失败时，演示者可以继续完成 demo 闭环。
-2. UI 不会把 fallback 结果伪装成真实 OpenCode 结果。
-3. 事件流记录 fallback 原因。
-
-### P3-004：修复 smoke test 失败误晋级
-
-**优先级：P0**
-
-**问题：** OpenCode 模式下 pytest 失败时仍可能 promote version 并标记 Passed。
-
-**工作内容：**
-
-1. 移除 `passed || codegenEngine === opencode` 的通过逻辑。
-2. 测试失败时进入 retry；retry 耗尽后 generation failed。
-3. 只有 smoke test 通过的版本才能成为 active version。
-4. 增加“有测试文件但测试失败”的 orchestration 回归测试。
-
-**验收：**
-
-1. 测试失败版本不会成为 active version。
-2. UI 显示失败版本和失败日志。
-3. retry 成功后才 promote 新版本。
-
-### P3-005：完成 manifest 契约消费
-
-**优先级：P1**
-
-**问题：** manifest 已开始生成和读取，但 runner 尚未实际使用其关键字段。
-
-**工作内容：**
-
-1. runner 使用 manifest 的 `entrypoint` 定位运行入口。
-2. runner 使用 `example_input` 自动填充 Agent 测试台 / Workflow 运行页。
-3. smoke test 使用 manifest 的 `test_command` 或进行安全映射。
-4. UI 展示 manifest 中的 runtime、entrypoint、example input。
-
-**验收：**
-
-1. OpenCode 生成物不依赖固定目录结构也能运行。
-2. 示例输入可以自动加载。
-3. manifest 缺失或非法时有明确错误。
-
-### P3-006：真实运行状态语义
-
-**优先级：P1**
-
-**问题：** Python runner fallback 异常时仍返回 `status: "success"`，容易误导演示用户。
-
-**工作内容：**
-
-1. 返回 `mode: "real" | "mock_fallback"`。
-2. fallback 时状态使用 `fallback` 或显式字段，不再伪装为纯成功。
-3. Agent/Workflow UI 显示 fallback 原因。
-4. E2E 覆盖 fallback 展示。
-
-**验收：**
-
-1. 用户能区分真实运行、mock runtime、fallback 运行。
-2. 失败不会被误写为成功。
-
-### P3-007：真实链路 E2E
-
-**优先级：P1**
-
-**问题：** 当前 E2E 覆盖 mock/template 主链路，没有覆盖真实 LLM + 真实 OpenCode。
-
-**工作内容：**
-
-1. 新增手动触发的 `real-opencode` E2E，不进入 CI 默认门禁。
-2. 使用真实 `.env`，但测试日志不得输出密钥。
-3. 至少覆盖一个 Agent 样例。
-4. 记录耗时、失败阶段、生成文件清单、smoke test 结果。
-
-**验收：**
-
-1. 有密钥和 OpenCode 环境时，可一键跑真实链路验收。
-2. 无密钥环境时自动跳过并给出说明。
-
-### P3-008：演示诊断页
-
-**优先级：P1**
-
-**问题：** 演示前无法一眼判断真实 LLM、OpenCode、Docker/sandbox、Python runner 是否可用。
-
-**工作内容：**
-
-1. 新增 `/health/deep` 或 `/demo/diagnostics`。
-2. 检查 LLM key、base URL、model、OpenCode binary、CLI style、sandbox allowlist、Docker/mock runner。
-3. 首页显示诊断状态。
-4. 提供“复制诊断报告”按钮。
-
-**验收：**
-
-1. 演示前 1 分钟内可以判断是否能跑真实链路。
-2. 失败项提供明确修复建议。
-
-### P3-009：版本、Diff、日志 UI
-
-**优先级：P1**
-
-**问题：** 后端已有 versions/diff/runs/log API，但前端没有完整消费。
-
-**工作内容：**
-
-1. 完成页显示 active version、engine、test status、fallback 状态。
-2. 工作区增加版本列表和 diff 面板。
-3. ErrorPanel 增加真实 run log 查看入口。
-4. repair 后自动刷新版本列表。
-
-**验收：**
-
-1. 用户无需手工查 API 就能理解失败和版本变化。
-2. 内部评审能看到“可追踪、可恢复”的产品价值。
-
-### P3-010：内部演示 runbook
-
-**优先级：P2**
-
-**问题：** 当前演示依赖操作者知道 `.env`、OpenCode、fallback、端口和恢复方式。
-
-**工作内容：**
-
-1. 编写 `docs/technical/p3_demo_runbook.md`。
-2. 包含真实链路、fallback 链路、常见失败、恢复命令。
-3. 固化 2 个标准 prompt：企业制度问答 Agent、售前需求分析 Workflow。
-4. 给出截图 checklist。
-
-**验收：**
-
-1. 非开发同事可以按 runbook 复现演示。
-2. 演示失败时能在 3 分钟内切换 fallback 完成价值展示。
-
-## 六、建议实施顺序
-
-### Milestone 1：真实 OpenCode 能启动
-
-1. P3-001 修复 allowlist。
-2. P3-002 修复 prompt 传递方式。
-3. P3-004 修复 smoke test 失败误晋级。
-4. 跑一次真实 Agent 样例。
-
-完成判定：真实 OpenCode 至少开始执行并产出文件；失败也必须来自生成质量或测试，而不是本地 sandbox 误拦截。
-
-### Milestone 2：真实链路能闭环
-
-1. P3-003 fallback 策略。
-2. P3-005 manifest 契约消费。
-3. P3-006 真实运行状态语义。
-4. 跑 Agent 测试台和导出。
-
-完成判定：真实链路或明确 fallback 链路可以完成源码查看、运行、导出。
-
-### Milestone 3：内部演示可重复
-
-1. P3-007 真实链路 E2E。
-2. P3-008 演示诊断页。
-3. P3-009 版本/Diff/日志 UI。
-4. P3-010 runbook。
+1. P3-007：真实链路 E2E。
+2. P3-008：演示诊断页。
+3. P3-009：版本/Diff/日志 UI。
+4. P3-010：内部演示 runbook。
 
 完成判定：内部同事可以按文档完成演示，失败时有可解释、可恢复路径。
-

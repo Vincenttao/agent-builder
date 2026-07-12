@@ -51,9 +51,20 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('--memory', limits.memory);
   args.push('--pids-limit', String(limits.pids_limit));
 
-  // Hardening: no new privileges. Don't drop CAP_DAC_OVERRIDE —
-  // opencode (root in container) needs to write to host-mounted /workspace.
+  // Hardening: no new privileges.
   args.push('--security-opt', 'no-new-privileges');
+
+  // Run as the host user so generated files can be cleaned up by the API/dev
+  // process after Docker jobs complete. HOME/cache live in container /tmp
+  // because an arbitrary numeric uid usually has no passwd entry.
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  const gid = typeof process.getgid === 'function' ? process.getgid() : null;
+  if (uid !== null && gid !== null) {
+    args.push('--user', `${uid}:${gid}`);
+    args.push('-e', 'HOME=/tmp/agent-builder-home');
+    args.push('-e', 'XDG_CACHE_HOME=/tmp/agent-builder-cache');
+    args.push('-e', 'PIP_CACHE_DIR=/tmp/agent-builder-pip-cache');
+  }
 
   // #4 mount ONLY the current generation/version workspace; never the host
   // docker socket, never the host root (architecture §12 constraint #10).

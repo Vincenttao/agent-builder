@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { DatabaseService } from '../database/database.service';
 import { OrchestrationModule } from './orchestration.module';
@@ -9,8 +10,15 @@ import { OrchestratorService } from './orchestrator.service';
 import { GenerationService } from '../generations/generation.service';
 import { AgentBuilderExceptionFilter } from '../common/agent-builder-exception.filter';
 import { createInMemoryDb } from '../testing/in-memory-db';
-import { GenerationType } from '@agent-builder/shared-contracts';
+import {
+  GenerationType,
+  SandboxJobStatus,
+  SandboxRuntime,
+  TestStatus,
+} from '@agent-builder/shared-contracts';
 import { GENERATED_DIR } from '../common/workspace';
+import { SandboxService } from '../sandbox/sandbox.service';
+import { VersionRepository } from '../generations/repositories/version.repository';
 
 /**
  * Full backend integration (Phase 6 §10.4): POST -> pipeline (generate + smoke
@@ -23,6 +31,8 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
   let db: DatabaseService;
   let orchestrator: OrchestratorService;
   let genService: GenerationService;
+  let sandbox: SandboxService;
+  let versionRepo: VersionRepository;
   const createdGenDirs: string[] = [];
 
   beforeAll(async () => {
@@ -37,6 +47,8 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
     httpServer = app.getHttpServer();
     orchestrator = moduleRef.get(OrchestratorService);
     genService = moduleRef.get(GenerationService);
+    sandbox = moduleRef.get(SandboxService);
+    versionRepo = moduleRef.get(VersionRepository);
   });
 
   afterAll(async () => {
@@ -163,6 +175,61 @@ describe('Orchestration integration (Phase 6 §10.4)', () => {
       .expect(201);
     expect(run.body.status).toBe('success');
     expect(run.body.events.length).toBeGreaterThan(0);
+  });
+
+  it('fails opencode pipeline when dependency installation fails', async () => {
+    const prevEngine = process.env.CODEGEN_ENGINE;
+    const prevRetries = process.env.OPENCODE_MAX_RETRIES;
+    process.env.CODEGEN_ENGINE = 'opencode';
+    process.env.OPENCODE_MAX_RETRIES = '0';
+
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ab-install-fail-'));
+    const stdoutPath = path.join(logDir, 'stdout.log');
+    const stderrPath = path.join(logDir, 'stderr.log');
+    fs.writeFileSync(stdoutPath, '');
+    fs.writeFileSync(stderrPath, 'pip install failed');
+
+    const realRun = sandbox.run.bind(sandbox);
+    const runSpy = jest.spyOn(sandbox, 'run').mockImplementation(async (req) => {
+      if (req.command[0] === 'python' && req.command[2] === 'pip') {
+        return {
+          jobId: 'sjob_install_failed',
+          runtime: SandboxRuntime.Mock,
+          status: SandboxJobStatus.Failed,
+          exitCode: 1,
+          stdoutPath,
+          stderrPath,
+          durationMs: 1,
+          mock: true,
+        };
+      }
+      return realRun(req);
+    });
+
+    try {
+      const gen = await genService.createGeneration({
+        type: GenerationType.Agent,
+        prompt: '塔罗占卜 Agent',
+        mode: 'auto',
+        model: 'default',
+      });
+      createdGenDirs.push(path.join(GENERATED_DIR, gen.id));
+      await orchestrator.runPipeline(gen.id);
+
+      const final = genService.getByIdOrThrow(gen.id);
+      expect(final.status).toBe('failed');
+      const version = versionRepo.listByGeneration(gen.id)[0];
+      expect(version?.test_status).toBe(TestStatus.Failed);
+      const pipRun = runSpy.mock.calls.find((call) => call[0].command[2] === 'pip')?.[0];
+      expect(pipRun?.command).toEqual(expect.arrayContaining(['--no-build-isolation']));
+    } finally {
+      runSpy.mockRestore();
+      fs.rmSync(logDir, { recursive: true, force: true });
+      if (prevEngine === undefined) delete process.env.CODEGEN_ENGINE;
+      else process.env.CODEGEN_ENGINE = prevEngine;
+      if (prevRetries === undefined) delete process.env.OPENCODE_MAX_RETRIES;
+      else process.env.OPENCODE_MAX_RETRIES = prevRetries;
+    }
   });
 
   // D-012: repair flow

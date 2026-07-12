@@ -251,14 +251,32 @@ export class OrchestratorService {
 
     // opencode projects need pip install before tests can run.
     if (this.codegenEngineName() === 'opencode') {
-      await this.sandbox.run({
+      const installResult = await this.sandbox.run({
         generationId,
         versionId: version?.id ?? null,
         jobType: JobType.SmokeTest,
-        command: ['python', '-m', 'pip', 'install', '-e', '.', '-q'],
+        command: ['python', '-m', 'pip', 'install', '-e', '.', '-q', '--no-build-isolation'],
         workspacePath: projectPath,
         timeoutSeconds: 60,
       });
+      if (installResult.status !== 'success') {
+        const latestVersion = this.latestVersion(generationId);
+        if (latestVersion) {
+          this.versionRepo.updateTestStatus(latestVersion.id, TestStatus.Failed);
+        }
+        const installOutput = this.readRunOutput(installResult.stdoutPath, installResult.stderrPath);
+        await this.eventService.record({
+          generation_id: generationId,
+          type: EventType.Thought,
+          message: `依赖安装失败 (exit ${installResult.exitCode})`,
+          payload: { exit_code: installResult.exitCode, run_id: installResult.jobId },
+          run_id: installResult.jobId,
+        });
+        return {
+          passed: false,
+          output: `依赖安装失败 (exit ${installResult.exitCode})\n${installOutput}`,
+        };
+      }
     }
 
     await this.eventService.record({
@@ -300,7 +318,8 @@ export class OrchestratorService {
 
     if (!passed) {
       if (this.codegenEngineName() === 'opencode') {
-        // Non-blocking but return output for retry feedback.
+        // P3-004: do NOT promoteVersion on failed tests.
+        // The retry loop in runPipelineInternal will handle retry or markFailed.
         await this.eventService.record({
           generation_id: generationId,
           type: EventType.Thought,
@@ -314,19 +333,31 @@ export class OrchestratorService {
       }
     }
 
-    if (latestVersion) {
-      // P3-004: only promote versions with passing tests.
-      const testOk = passed;
-      await this.genService.promoteVersion(generationId, { ...latestVersion, test_status: testOk ? TestStatus.Passed : TestStatus.Failed });
+    if (passed && latestVersion) {
+      this.versionRepo.updateTestStatus(latestVersion.id, TestStatus.Passed);
+      await this.genService.promoteVersion(generationId, { ...latestVersion, test_status: TestStatus.Passed });
       await this.eventService.record({
         generation_id: generationId,
         type: EventType.Output,
-        message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件）${testOk ? '' : '（测试未通过）'}`,
+        message: `生成完成：${spec.name}（${latestVersion.file_count} 个文件）`,
         payload: { version_id: latestVersion.id, file_count: latestVersion.file_count, mock: result.mock },
       });
     }
 
     return { passed, output: testOutput };
+  }
+
+  private readRunOutput(stdoutPath: string, stderrPath: string): string {
+    const chunks: string[] = [];
+    for (const file of [stdoutPath, stderrPath]) {
+      try {
+        const content = fs.readFileSync(file, 'utf8').trim();
+        if (content) chunks.push(content);
+      } catch {
+        // best-effort diagnostics only
+      }
+    }
+    return chunks.join('\n').slice(0, 2000);
   }
 
   // ─── Phase 14: Repair ────────────────────────────────────────────

@@ -275,6 +275,22 @@ describe('OpenCodeEngine', () => {
   // ---------------------------------------------------------------------------
   // Env / network policy helpers
   // ---------------------------------------------------------------------------
+  describe('buildPrompt', () => {
+    it('includes the required agent manifest and smoke test contract', () => {
+      const templateEngine = new TemplateEngine();
+      const sandbox = buildSandboxService();
+      const engine = new OpenCodeEngine(templateEngine, sandbox, false);
+      const prompt = (engine as any).buildPrompt(TAROT_AGENT_SPEC);
+
+      expect(prompt).toContain('agent_builder_manifest.json');
+      expect(prompt).toContain('src/agents/agent.py');
+      expect(prompt).toContain('tests/test_agent_smoke.py');
+      expect(prompt).toContain('"test_command": "pytest tests/test_agent_smoke.py -q"');
+      expect(prompt).toContain('pytest tests/ -q 必须通过');
+      expect(prompt).toContain('测试不得访问真实网络');
+    });
+  });
+
   describe('resolveNetworkPolicy', () => {
     const templateEngine = new TemplateEngine();
     const sandbox = buildSandboxService();

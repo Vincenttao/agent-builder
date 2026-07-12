@@ -84,6 +84,27 @@ describe('buildDockerArgs (Phase 3 §7.2 — Docker baseline)', () => {
     expect(args[wIdx + 1]).toBe('/workspace');
   });
 
+  it('runs as the host user and keeps writable caches inside container /tmp', () => {
+    const args = buildDockerArgs({
+      runtime: SandboxRuntime.Docker,
+      image: IMAGE,
+      workspacePath: WORKSPACE,
+      command: CMD,
+    });
+    const uid = process.getuid?.();
+    const gid = process.getgid?.();
+    if (uid !== undefined && gid !== undefined) {
+      const userIdx = args.indexOf('--user');
+      expect(args[userIdx + 1]).toBe(`${uid}:${gid}`);
+      expect(args).toEqual(expect.arrayContaining([
+        '-e',
+        'HOME=/tmp/agent-builder-home',
+        'XDG_CACHE_HOME=/tmp/agent-builder-cache',
+        'PIP_CACHE_DIR=/tmp/agent-builder-pip-cache',
+      ]));
+    }
+  });
+
   it('uses podman binary for podman runtime', () => {
     const args = buildDockerArgs({
       runtime: SandboxRuntime.Podman,

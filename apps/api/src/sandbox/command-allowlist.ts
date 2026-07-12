@@ -41,6 +41,7 @@ export const FORBIDDEN_TOKENS: readonly string[] = [
  */
 export const ALLOWED_PREFIXES: readonly string[][] = [
   ['opencode', 'run'],
+  ['opencode', '-p'],       // v0 legacy
   ['opencode', 'serve'],
   ['python', '--version'],
   ['python', '-m', 'pytest'],

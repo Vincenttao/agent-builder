@@ -342,7 +342,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
    * Set OPENCODE_CLI_STYLE in .env.
    */
   private buildOpencodeCommand(modelArg: string): string[] {
-    const style = process.env.OPENCODE_CLI_STYLE ?? 'v0';
+    const style = process.env.OPENCODE_CLI_STYLE ?? 'v1';
     // P3-002: all styles read the full prompt from .agent_builder/prompt.md.
     // The prompt file already contains the complete spec, constraints, manifest
     // requirements, and file checklist — no need to duplicate in argv.
@@ -380,8 +380,48 @@ export class OpenCodeEngine implements CodeGenerationEngine {
 
   /** The OpenCode prompt is derived from the Spec (never the raw user prompt). */
   private buildPrompt(spec: AgentSpec | WorkflowSpec): string {
+    const isAgent = isAgentSpec(spec);
+    const requiredFiles = isAgent
+      ? [
+          'agent_builder_manifest.json',
+          'pyproject.toml',
+          'README.md',
+          'src/main.py',
+          'src/openjiuwen_runtime/__init__.py',
+          'src/agents/agent.py',
+          'tests/test_agent_smoke.py',
+        ]
+      : [
+          'agent_builder_manifest.json',
+          'pyproject.toml',
+          'README.md',
+          'workflow.yaml',
+          'src/main.py',
+          'src/openjiuwen_runtime/__init__.py',
+          'src/workflows/workflow.py',
+          'tests/test_workflow_smoke.py',
+        ];
+    const manifest = isAgent
+      ? {
+          schema_version: '1.0',
+          project_type: 'agent',
+          entrypoint: 'src/agents/agent.py',
+          test_command: 'pytest tests/test_agent_smoke.py -q',
+          run_command: 'python src/main.py',
+          example_input: '请查询年假政策',
+          runtime: { framework: 'openjiuwen', mode: 'mock-compatible' },
+        }
+      : {
+          schema_version: '1.0',
+          project_type: 'workflow',
+          entrypoint: 'src/workflows/workflow.py',
+          test_command: 'pytest tests/test_workflow_smoke.py -q',
+          run_command: 'python -m src.main',
+          example_input: { requirement_doc: '示例需求文档内容' },
+          runtime: { framework: 'openjiuwen', mode: 'mock-compatible' },
+        };
     const lines = [
-      `# 生成 OpenJiuwen ${isAgentSpec(spec) ? 'Agent' : 'Workflow'} 工程`,
+      `# 生成 OpenJiuwen ${isAgent ? 'Agent' : 'Workflow'} 工程`,
       '',
       `名称：${spec.name}`,
       `描述：${spec.description}`,
@@ -390,6 +430,22 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '- 生成的 Agent/Workflow 必须通过 src/openjiuwen_runtime 适配层调用 OpenJiuwen。',
       '- 不得使用 LangGraph / CrewAI / Dify 等非 OpenJiuwen 框架。',
       '- 不得硬编码任何 API key。',
+      '- 不要依赖联网安装才能通过 smoke test；测试必须能在离线 sandbox 内通过。',
+      '- 如果需要外部 LLM SDK，运行时代码只能通过环境变量读取 key，smoke test 必须使用 mock/fake provider。',
+      '',
+      '必须创建以下文件，路径必须完全一致：',
+      ...requiredFiles.map((file) => `- ${file}`),
+      '',
+      'agent_builder_manifest.json 必须是合法 JSON，内容按以下结构生成：',
+      '```json',
+      JSON.stringify(manifest, null, 2),
+      '```',
+      '',
+      'smoke test 要求：',
+      `- 必须包含 ${isAgent ? 'tests/test_agent_smoke.py' : 'tests/test_workflow_smoke.py'}。`,
+      '- pytest tests/ -q 必须通过。',
+      '- 测试不得访问真实网络，不得要求真实 API key。',
+      '- 测试至少校验 manifest、入口文件、OpenJiuwen adapter、Spec 中的工具/节点配置。',
       '',
       'Spec（JSON）：',
       '```json',
