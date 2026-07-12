@@ -14,7 +14,6 @@ import { GenerationService } from '../generations/generation.service';
 import { RunRepository } from '../generations/repositories/run.repository';
 import { EventService } from '../generations/event.service';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { PYTHON_RUNNER_SRC } from '../common/workspace';
 
 /**
  * Runs generated Agent/Workflow projects via the Python Runner inside the
@@ -123,7 +122,6 @@ export class RunService {
       workspacePath: projectPath,
       runtime: SandboxRuntime.Docker,
       stdin,
-      envAllowlist: { PYTHONPATH: PYTHON_RUNNER_SRC },
       timeoutSeconds: 60,
     });
 

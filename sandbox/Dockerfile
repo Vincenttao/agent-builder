@@ -16,6 +16,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 RUN pip install --no-cache-dir pytest setuptools wheel
 
+# python_runner — executes generated Agent/Workflow projects
+COPY services/python-runner /tmp/python-runner
+RUN pip install --no-cache-dir /tmp/python-runner && rm -rf /tmp/python-runner
+
 # opencode — install via official installer, then copy to /usr/local/bin
 # so it survives tmpfs mounts on /root.
 RUN curl -fsSL https://opencode.ai/install | bash && \

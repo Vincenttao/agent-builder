@@ -5,8 +5,8 @@
 services:
   sandbox:
     build:
-      context: sandbox/
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: sandbox/Dockerfile
     image: agent-builder-sandbox:latest
     # Build-only: image is used by API's DockerSandboxRunner at runtime.
     command: echo "sandbox image ready — start API with npm run dev:api:llm"

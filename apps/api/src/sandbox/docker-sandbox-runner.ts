@@ -84,7 +84,7 @@ export class DockerSandboxRunner implements SandboxRunner {
 
     return new Promise<SandboxRunResult>((resolve) => {
       const child = spawn(args[0], args.slice(1), {
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: req.stdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
         timeout: (req.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
       });
       this.runningProcesses.push(child);
@@ -114,6 +114,10 @@ export class DockerSandboxRunner implements SandboxRunner {
           }
         }
       });
+
+      if (req.stdin && child.stdin) {
+        child.stdin.end(req.stdin);
+      }
 
       const done = (status: SandboxJobStatus, exitCode: number | null) => {
         try {
