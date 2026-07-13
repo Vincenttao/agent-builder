@@ -111,13 +111,27 @@ export class RunService {
    * credentials used by OpenCode so generated Agents/Workflows can call the
    * real LLM API at runtime (via openai Python SDK).
    */
+  /**
+   * Build env allowlist for the run sandbox.
+   *
+   * P4: RUN_LLM_* takes priority (independent runtime credentials).
+   * Falls back to OPENCODE_* with a deprecation warning for migration.
+   * OPENCODE_* fallback will be removed in P5.
+   */
   private buildRunEnv(): Record<string, string> {
     const map: Record<string, string> = {};
-    // Pass LLM credentials so the generated agent can call the real API.
-    const provider = process.env.OPENCODE_PROVIDER;
-    const apiKey = process.env.OPENCODE_API_KEY;
-    const baseUrl = process.env.OPENCODE_BASE_URL;
-    const model = process.env.OPENCODE_MODEL;
+    const provider = process.env.RUN_LLM_PROVIDER || process.env.OPENCODE_PROVIDER;
+    const apiKey = process.env.RUN_LLM_API_KEY || process.env.OPENCODE_API_KEY;
+    const baseUrl = process.env.RUN_LLM_BASE_URL || process.env.OPENCODE_BASE_URL;
+    const model = process.env.RUN_LLM_MODEL || process.env.OPENCODE_MODEL;
+
+    if (!process.env.RUN_LLM_API_KEY && process.env.OPENCODE_API_KEY) {
+      this.logger.warn(
+        'RUN_LLM_API_KEY not set — falling back to OPENCODE_API_KEY. ' +
+        'This fallback will be removed in P5. Set RUN_LLM_* for runtime LLM.',
+      );
+    }
+
     if (provider && apiKey) {
       map[`${provider.toUpperCase()}_API_KEY`] = apiKey;
       if (baseUrl) map[`${provider.toUpperCase()}_BASE_URL`] = baseUrl;
