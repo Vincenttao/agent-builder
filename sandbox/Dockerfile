@@ -14,12 +14,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-installed Python packages.
-# Generation sandbox has outbound network (controlled policy); missing packages can be
-# pip-installed by opencode when truly needed.  Run sandbox has NO network (none
-# policy for security), so runtime dependencies MUST be in this image.
-# These are the most common packages — opencode should prefer them to avoid
-# redundant pip installs during generation.
+# Pre-installed Python packages — both generation and run sandboxes have
+# outbound network (controlled policy).  Pip install works everywhere.
+# Pre-installing common packages avoids wasting time on redundant downloads
+# during generation, and ensures runtime has everything it needs to call LLM APIs.
 RUN pip install --no-cache-dir \
     pytest setuptools wheel \
     openai \

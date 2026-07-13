@@ -7,6 +7,7 @@ import {
   JobType,
   EventType,
   SandboxRuntime,
+  NetworkPolicy,
   AgentBuilderError,
   ErrorCode,
 } from '@agent-builder/shared-contracts';
@@ -158,9 +159,10 @@ export class RunService {
       command: ['python', '-m', 'python_runner.cli', ...sub],
       workspacePath: projectPath,
       runtime: SandboxRuntime.Docker,
+      networkPolicy: NetworkPolicy.Controlled,  // P4: run sandbox needs outbound for LLM API calls
       stdin,
       envAllowlist: this.buildRunEnv(),
-      timeoutSeconds: 60,
+      timeoutSeconds: 120,  // increased from 60s — real LLM calls take time
     });
 
     let stdout = fs.existsSync(sandboxResult.stdoutPath)
