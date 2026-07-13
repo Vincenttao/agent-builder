@@ -834,7 +834,39 @@ P4 完成必须交付：
 
 ---
 
-## 17. Review 意见（2026-07-13）
+## 17. 最终验收状态（2026-07-13，合并到 main 时点）
+
+### §16 交付清单逐项验收
+
+| # | 交付项 | 状态 | 证据 |
+|---|---|---|---|
+| 1 | `openjiuwen_api_inventory.md` | ✅ | `docs/technical/openjiuwen_api_inventory.md` (317 行，含 API 陷阱表) |
+| 2 | TemplateEngine manifest → lightweight | ✅ | `template-engine.ts`: `engine:'template'`, `runtime.mode:'lightweight'` |
+| 3 | OpenCode fallback 默认禁用 | ✅ | `opencode-engine.ts`: `allowFallback=false`; `codegen.module.ts`: `OPENCODE_ALLOW_FALLBACK === 'true'` |
+| 4 | 真实 Agent 产物 gate | ✅ | `real-openjiuwen-gate.ts` (195 行, 12 规则) + `real-openjiuwen-gate.spec.ts` (12 tests) |
+| 5 | `RUN_LLM_*` 运行期配置 | ✅ | `run.service.ts:buildRunEnv()`: 优先 `RUN_LLM_*`, fallback `OPENCODE_*` + warning |
+| 6 | ReAct trace 后端契约 | ✅ | `runs.ts`: `RunTraceEvent` 类型; `runner.py`: `_normalise_agent_output()` + `_tool_calls_to_trace()` |
+| 7 | 真实 E2E 脚本 | ✅ | `apps/api/scripts/real-opencode-e2e.mjs`; `package.json`: `test:e2e:real` |
+| 8 | Workflow real path 决策 | ✅ | `docs/technical/p4_workflow_decision.md`: P4 不验收真实 Workflow |
+| 9 | P4 验收报告 | ❌ 待编写 | 建议由负责人基于本检查清单撰写 |
+| 10 | `.env.example` 增加 `RUN_LLM_*` | ✅ | `.env.example`: `RUN_LLM_PROVIDER/API_KEY/BASE_URL/MODEL` |
+| 11 | diagnostics `/health/deep` 区分展示 | ❌ 未实现 | `diagnostics.controller.ts` 仅展示 `OPENCODE_*`，未增加 `RUN_LLM_*` 区块 |
+
+### 前端 checklist（全部待验证）
+
+| M | 前端项 | 文件 | 状态 |
+|---|---|---|---|
+| M2 | fallback 按钮默认隐藏 | `ErrorPanel.tsx` | ❓ |
+| M2 | 版本列表显示 engine/runtime mode | `VersionList.tsx` | ❓ |
+| M5 | AgentTestPanel 展示 trace | `AgentTestPanel.tsx` | ❓ |
+| M5 | Diagnostics 显示 RUN_LLM_* | `Diagnostics.tsx` | ❓ |
+| M6 | trace event 展开/折叠 | `AgentTestPanel.tsx` | ❓ |
+
+### 验收结论
+
+**后端 P4 核心目标已完成**：9/11 交付项已实现，2 项待补（P4 验收报告、diagnostics 更新）。前端未涉及，需独立评估。
+
+P4 成功标准（§1.1）的 8 条中，7 条满足，第 6 条（Agent 测试台展示 ReAct trace）后端契约已就绪，前端未验证。
 
 以下对照 `feature/openjiuwen-real` 当前代码逐项 review。
 
