@@ -28,9 +28,22 @@ export interface RunRecord {
   updated_at: string;
 }
 
+/** A single step in a ReAct trace (P4 M6). */
+export interface RunTraceEvent {
+  iteration: number;
+  type: 'tool_call' | 'tool_result' | 'final' | 'error';
+  tool?: string;
+  input?: Record<string, unknown>;
+  output?: unknown;
+  message?: string;
+  duration_ms?: number;
+}
+
 /** Structured runner output (runtime_and_sandbox §11, architecture Phase 5 §9.3). */
 export interface RunnerResult {
   status: 'success' | 'failed' | 'timeout';
   output: Record<string, unknown>;
+  /** P4 M6: ReAct trace events (preferred over events for UI display). */
+  trace?: RunTraceEvent[];
   events: Record<string, unknown>[];
 }

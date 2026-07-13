@@ -82,19 +82,51 @@ def _call_function(func, arg: Any) -> Any:
 
 
 def _normalise_agent_output(raw: Any) -> Dict[str, Any]:
+    # Unwrap openjiuwen invoke() shape: {"output": ..., "result_type": ...}
     if isinstance(raw, dict) and isinstance(raw.get("output"), dict) and "status" in raw:
         return _normalise_agent_output(raw["output"])
-    if isinstance(raw, dict) and ("reply" in raw or "tool_calls" in raw):
+
+    # P4 M6: agent returns {"reply": str, "tool_calls": list, "trace": list}
+    if isinstance(raw, dict) and ("reply" in raw or "tool_calls" in raw or "trace" in raw):
+        tool_calls = _jsonable(raw.get("tool_calls", []))
+        trace = raw.get("trace")
+        if trace is None and tool_calls:
+            # Convert legacy tool_calls to trace format
+            trace = _tool_calls_to_trace(tool_calls)
         return {
             "reply": str(raw.get("reply", "")),
-            "tool_calls": _jsonable(raw.get("tool_calls", [])),
+            "tool_calls": tool_calls,
+            "trace": _jsonable(trace) if trace else [],
         }
+
     if isinstance(raw, str):
-        return {"reply": raw, "tool_calls": []}
+        return {"reply": raw, "tool_calls": [], "trace": []}
     return {
         "reply": json.dumps(_jsonable(raw), ensure_ascii=False, indent=2),
         "tool_calls": [],
+        "trace": [],
     }
+
+
+def _tool_calls_to_trace(tool_calls: list) -> list:
+    """Convert legacy [{tool, args, result}] to P4 trace format."""
+    trace = []
+    for i, tc in enumerate(tool_calls):
+        if not isinstance(tc, dict):
+            continue
+        trace.append({
+            "iteration": i + 1,
+            "type": "tool_call",
+            "tool": str(tc.get("tool", "")),
+            "input": tc.get("args"),
+        })
+        trace.append({
+            "iteration": i + 1,
+            "type": "tool_result",
+            "tool": str(tc.get("tool", "")),
+            "output": tc.get("result"),
+        })
+    return trace
 
 
 def _normalise_workflow_output(raw: Any) -> Dict[str, Any]:
