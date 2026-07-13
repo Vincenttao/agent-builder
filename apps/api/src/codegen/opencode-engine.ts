@@ -20,6 +20,7 @@ import type {
 } from './engine';
 import { TemplateEngine } from './template-engine';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { logPipErrors } from '../common/workspace';
 
 /**
  * OpenCodeEngine — calls `opencode run` via SandboxService to generate code
@@ -193,6 +194,13 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     // intermediate pytest/import failures in stderr after it has fixed them, so
     // only inspect stderr when the run failed or produced no usable files.
     const noFilesGenerated = files.length === 0;
+
+    // Collect pip install errors for Dockerfile improvement (P4).
+    // Both failed AND successful runs may contain useful pip diagnostics.
+    try {
+      const stderrFull = fs.readFileSync(result.stderrPath, 'utf8');
+      logPipErrors(stderrFull, context.generationId);
+    } catch { /* best-effort */ }
 
     if (result.status !== 'success') {
       let stderrText = '';

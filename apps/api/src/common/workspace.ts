@@ -53,3 +53,25 @@ export function toWorkspaceRelative(absPath: string | null): string | null {
 
 /** Absolute path to the Python Runner source (for PYTHONPATH in the sandbox). */
 export const PYTHON_RUNNER_SRC = path.join(REPO_ROOT, 'services', 'python-runner', 'src');
+
+/** Log file collecting pip install errors from opencode runs (P4).
+ *  Review this file to decide which packages to add to sandbox/Dockerfile. */
+export const PIP_ERROR_LOG = path.join(LOGS_DIR, 'pip-install-errors.log');
+
+/** Append pip-related error lines from a stderr buffer to the pip error log. */
+export function logPipErrors(stderrText: string, generationId: string): void {
+  if (!stderrText) return;
+  const lines = stderrText.split('\n');
+  const pipLines = lines.filter(
+    (l) =>
+      /pip\s+(install|download)/i.test(l) ||
+      /Package\(s\) not found/i.test(l) ||
+      /ERROR: Could not find/i.test(l) ||
+      /ModuleNotFoundError: No module named/i.test(l),
+  );
+  if (pipLines.length === 0) return;
+
+  const timestamp = new Date().toISOString();
+  const header = `\n=== ${timestamp} | ${generationId} ===\n`;
+  fs.appendFileSync(PIP_ERROR_LOG, header + pipLines.join('\n') + '\n', 'utf8');
+}
