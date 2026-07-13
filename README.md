@@ -264,6 +264,21 @@ docker buildx install
 COMPOSE_BAKE=0 docker compose build sandbox
 ```
 
+**Q: 报错 "python:3.11-slim: not found"（阿里云/国内服务器）**
+
+Docker Hub 被墙。配置镜像加速器 `/etc/docker/daemon.json`：
+
+```json
+{
+  "registry-mirrors": ["https://registry.cn-hangzhou.aliyuncs.com"]
+}
+```
+
+```bash
+sudo systemctl restart docker
+docker compose up --build   # 重试
+```
+
 **Q: opencode 不可用，日志显示 "OpenCode unavailable — falling back to TemplateEngine"**
 
 sandbox 镜像未构建或 Docker daemon 未运行：
