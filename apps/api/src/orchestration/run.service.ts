@@ -137,6 +137,9 @@ export class RunService {
       if (baseUrl) map[`${provider.toUpperCase()}_BASE_URL`] = baseUrl;
     }
     if (model) map['AGENT_BUILDER_MODEL'] = model;
+    // P4: suppress openjiuwen loguru init logs from polluting stdout JSON
+    map['LOGURU_LEVEL'] = 'WARNING';
+    map['PYTHONUNBUFFERED'] = '1';
     return map;
   }
 
@@ -160,18 +163,31 @@ export class RunService {
       timeoutSeconds: 60,
     });
 
-    const stdout = fs.existsSync(sandboxResult.stdoutPath)
+    let stdout = fs.existsSync(sandboxResult.stdoutPath)
       ? fs.readFileSync(sandboxResult.stdoutPath, 'utf8')
       : '';
+    let stderr = fs.existsSync(sandboxResult.stderrPath)
+      ? fs.readFileSync(sandboxResult.stderrPath, 'utf8')
+      : '';
+
+    // P4: openjiuwen import-time logs may pollute stdout before the JSON line.
+    // Strip everything before the first '{' so the runner can parse the result.
+    const jsonStart = stdout.lastIndexOf('{"status"');
+    if (jsonStart > 0) {
+      this.logger.debug(`stripping ${jsonStart} bytes of log noise from stdout`);
+      stdout = stdout.slice(jsonStart);
+    }
+
     let parsed: RunnerResult;
     try {
       parsed = JSON.parse(stdout) as RunnerResult;
     } catch {
-      const preview = stdout.slice(0, 500) || '(空输出)';
+      const stdoutPreview = stdout.slice(-500) || '(空输出)';
+      const stderrPreview = stderr.slice(-300) || '(无 stderr)';
       throw new AgentBuilderError(
         ErrorCode.RunFailed,
-        `无法运行生成的项目（${preview}）。如果项目刚生成，可能需要先 pip install 或修改源码后再试。`,
-        { stdout: preview },
+        `无法运行生成的项目。stdout: ${stdoutPreview}。stderr: ${stderrPreview}`,
+        { stdout: stdoutPreview, stderr: stderrPreview },
       );
     }
     return {

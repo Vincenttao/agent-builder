@@ -23,7 +23,19 @@ def _cmd_health(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _suppress_init_logs() -> None:
+    """Redirect openjiuwen / loguru init logs to stderr so stdout stays clean JSON."""
+    try:
+        from loguru import logger as loguru_logger
+        loguru_logger.remove()  # drop default stdout sink
+        loguru_logger.add(sys.stderr, level="WARNING",
+                          format="{time} | {level} | {message}")
+    except Exception:
+        pass  # loguru not installed — nothing to suppress
+
+
 def _cmd_agent_run(args: argparse.Namespace) -> int:
+    _suppress_init_logs()
     message = args.message
     if not message:
         # Read from stdin so user text is never a CLI arg (sandbox allowlist).
@@ -34,6 +46,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_workflow_run(args: argparse.Namespace) -> int:
+    _suppress_init_logs()
     raw = args.input
     if not raw:
         raw = sys.stdin.read().strip() if not sys.stdin.isatty() else "{}"
