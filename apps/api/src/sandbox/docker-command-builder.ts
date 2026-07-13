@@ -72,9 +72,17 @@ export function buildDockerArgs(input: DockerCommandInput): string[] {
   args.push('-w', '/workspace');
 
   // Inject env vars (API keys, model config) into the container.
+  // P4: translate host paths in env var values to container paths.
+  // The workspace is mounted at /workspace; any host-path prefix that
+  // matches the workspace MUST be rewritten so the process inside the
+  // container can actually find those paths (e.g. PYTHONPATH).
   if (input.envAllowlist) {
     for (const [key, val] of Object.entries(input.envAllowlist)) {
-      if (val) args.push('-e', `${key}=${val}`);
+      if (!val) continue;
+      // Replace every occurrence of the host workspace path with /workspace.
+      // This handles both the project root and nested dirs (e.g. …/src).
+      const translated = val.split(input.workspacePath).join('/workspace');
+      args.push('-e', `${key}=${translated}`);
     }
   }
 
