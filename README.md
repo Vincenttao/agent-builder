@@ -1,8 +1,14 @@
-# Agent Builder (P3)
+# Agent Builder (P4)
 
-自然语言生成基于 **OpenJiuwen** 的 Python Agent / Workflow 工程：解析需求 → Spec 确认 → 生成项目 → 运行测试 → 展示源码与运行效果 → 导出代码包。
+自然语言生成基于 **OpenJiuwen** 的 Python Agent / Workflow 工程。
 
-> 范围（依据 `docs/prd/PRD-v0.3-agent-builder.md` + `docs/technical/p2_plan.md` + `docs/technical/p3_work_items.md`）：生成 Agent 与 Workflow；P2 完成统一 LLM 解析 / Draft 确认 / OpenCode 生成 / 体验增强；P3 完成真实生成安全闭环、演示恢复闭环与可重复演示（fallback、manifest 消费、诊断页、版本/Diff/日志 UI、真实链路 E2E、runbook）。不做 Skills 独立创建、Agent Store、多租户。
+```text
+输入需求 → Spec 确认 → OpenCode 生成 → Gate 验收 → Smoke Test → Agent 运行（真实 LLM ReAct 循环）→ 查看源码/导出
+```
+
+> P2: 统一 LLM 解析、Draft 确认、OpenCode 生成、体验增强。
+> P3: 真实生成安全闭环、演示恢复（fallback/manifest/诊断/版本 Diff/日志 UI/E2E/runbook）。
+> P4: **Fail-loud 真实链路**（禁用自动 fallback）、**真实 OpenJiuwen 0.1.15 集成**（Docker 沙箱预装）、**产物 Gate**（12 条规则验证）、**RUN_LLM_*** 运行期 LLM 契约、**ReAct trace** 契约、**项目骨架**（opencode 填 TODO，不从零生成）。不做 Skills 管理、Agent Store、多租户。
 
 ## 仓库结构
 
@@ -72,13 +78,18 @@ SPEC_LLM_API_KEY=sk-xxxxxxxxxxxxxxxx      # DeepSeek API key
 SPEC_LLM_MODEL=deepseek-v4-pro
 
 # ── 代码生成引擎 ──
-CODEGEN_ENGINE=template                   # template（默认，快速稳定）
-# 或使用 opencode：
-# CODEGEN_ENGINE=opencode
-# OPENCODE_REQUIRE_REAL=true
-# OPENCODE_API_KEY=sk-xxxxxxxxxxxxxxxx    # opencode 使用的模型 key
-# OPENCODE_PROVIDER=deepseek
-# OPENCODE_MODEL=deepseek-v4-pro
+CODEGEN_ENGINE=opencode                   # P4 推荐：真实 OpenCode
+OPENCODE_REQUIRE_REAL=true
+OPENCODE_API_KEY=sk-xxxxxxxxxxxxxxxx
+OPENCODE_PROVIDER=deepseek
+OPENCODE_MODEL=deepseek-v4-flash
+OPENCODE_ALLOW_FALLBACK=false             # P4 默认：fail-loud（调试时暴露问题）
+
+# ── Agent 运行期 LLM（P4：独立于生成期）──
+RUN_LLM_PROVIDER=deepseek
+RUN_LLM_API_KEY=sk-xxxxxxxxxxxxxxxx       # 可与 OPENCODE_API_KEY 相同
+RUN_LLM_BASE_URL=https://api.deepseek.com/v1
+RUN_LLM_MODEL=deepseek-v4-flash
 
 # ── Runtime ──
 PORT=3001
@@ -182,11 +193,11 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### 引擎模式说明
 
-| 模式 | CODEGEN_ENGINE | 说明 | 适用 |
-|------|---------------|------|------|
-| Template | `template` | 确定性模板生成，快速稳定，不需要 opencode | 开发调试、CI、快速 Demo |
-| OpenCode mock | `opencode` + `OPENCODE_REQUIRE_REAL=false` | 在 opencode 事件流中运行 TemplateEngine | CI 测试 opencode 事件路径 |
-| OpenCode real | `opencode` + `OPENCODE_REQUIRE_REAL=true` | 真实 `opencode run`，Docker sandbox + LLM | 生产级代码生成 |
+| 引擎 | CODEGEN_ENGINE | OpenJiuwen | 运行 LLM | 真实验收 |
+|------|---------------|-----------|---------|---------|
+| **OpenCode real** | `opencode` + `OPENCODE_REQUIRE_REAL=true` | 真实 0.1.15（Docker 预装） | `RUN_LLM_*` → `DEEPSEEK_API_KEY` | ✅ |
+| OpenCode mock | `opencode` + `OPENCODE_REQUIRE_REAL=false` | 真实（Docker 预装） | mock | ❌ CI only |
+| Template | `template` | lightweight（项目内 `openjiuwen_runtime`） | mock | ❌ test-only |
 
 Mock 模式无需任何外部 API key，所有 prompt 走 `MockLlmSpecParser` 生成通用 Spec，完整流程（parse → generate → smoke test → run → export）均可跑通。
 
@@ -287,19 +298,23 @@ rm -rf workspace/generated workspace/runs workspace/exports workspace/metadata.d
 
 ## P3：演示恢复与可重复演示
 
-真实 OpenCode 生成失败时可从 UI 恢复并完成演示，内部同事可按 `docs/technical/p3_demo_runbook.md` 复现。新增能力：
+真实 OpenCode 生成失败时可从 UI 恢复并完成演示。详见 `docs/technical/p3_work_items.md`。
+
+## P4：真实 OpenJiuwen 工程化（当前版本）
+
+把"真实 OpenJiuwen + 真实 LLM + OpenCode 生成 + Agent runtime 执行"从 prompt 约束提升为可重复验收的工程能力。
 
 | 能力 | 说明 |
 |---|---|
-| 模板 fallback | `POST /api/generations/:id/fallback` 用 TemplateEngine 重生成失败任务（mock 模式）；ErrorPanel 一键"切换模板引擎"按钮；事件流记录原始失败原因与 fallback reason |
-| Manifest 消费 | `GET /:id/manifest`；smoke test 用 manifest `test_command` 安全映射到 allowlist argv；Agent/Workflow 测试台预填 `example_input`；runner 用 `entrypoint` 定位 spec |
-| Workflow fallback 状态 | WorkflowRunPanel 显示 `mock_fallback` amber banner + 原因，与 AgentTestPanel 一致 |
-| 真实链路 E2E | `npm run test:e2e:real`：读 `/health/deep` 自动 skip；就绪时输出 generation id / 耗时 / 文件清单 / smoke 状态 / engine |
-| 诊断页 | `GET /health/deep` 输出 LLM key 存在性、base URL/model、OpenCode engine+CLI+key、Docker 可用性、allowlist 前缀数、Python runner；首页 Diagnostics 组件实时展示绿/灰就绪点 |
-| 版本/Diff/日志 UI | CompletionSummary 传入 active version；VersionList 列出全部版本（激活 + Diff 对比）；ErrorPanel 显示最近一次运行 stdout/stderr tail |
-| 失败重试安全 | `promoteVersion()` 仅在 smoke test 通过时调用，失败版本不会成为 active version |
-| 真实命令 allowlist | `...` 省略号不再误判为路径逃逸；opencode v0/v1 前缀均纳入 allowlist |
-| 内部 runbook | `docs/technical/p3_demo_runbook.md`：标准 prompt、4 条恢复路径、截图 checklist、故障表 |
+| **Fail-loud 真实链路** | `OPENCODE_ALLOW_FALLBACK=false` 默认值；fallback endpoint 需 `ENABLE_TEMPLATE_FALLBACK=true` 启用；缺失项诊断（opencode/Docker/API key） |
+| **真实 OpenJiuwen 0.1.15** | Docker sandbox 预装完整 openjiuwen（ReActAgent + @tool + invoke）；生成 Agent 直接 import SDK |
+| **产物 Gate** | `real-openjiuwen-gate.ts`：12 条规则（manifest/import/tool/invoke/禁止 adapter 目录/非 README-only）；gate 失败 → generation failed，不运行 smoke test |
+| **RUN_LLM_* 契约** | 运行期 LLM 独立配置（`RUN_LLM_PROVIDER/API_KEY/BASE_URL/MODEL`），优先于 OPENCODE_*（含 deprecation warning） |
+| **ReAct trace** | `RunTraceEvent` 类型（iteration/type/tool/input/output）；python_runner 自动转换 legacy `tool_calls` 为 trace |
+| **项目骨架** | `agent-real-openjiuwen/` 模板：opencode 看到已完成的 ReActAgent 骨架，只填 SYSTEM_PROMPT + 工具实现 + README；避免 API 错误 |
+| **API 盘点** | `docs/technical/openjiuwen_api_inventory.md`：锁定所有 import、返回结构、已知陷阱（DEFAULT_RUNNER_CONFIG 不存在、LocalFunction 不可调用等） |
+| **Workflow 决策** | P4 不验收真实 Workflow；Workflow 标记为 lightweight/test-only |
+| **pip 错误日志** | `workspace/logs/pip-install-errors.log`：自动收集 opencode 运行中的 pip 错误，用于后续 Dockerfile 优化 |
 
 ## 测试
 
@@ -320,11 +335,11 @@ npm run typecheck     # tsc --noEmit（各 workspace）
 | 套件 | 数量 |
 |------|------|
 | contracts | 15 |
-| api | 155 |
+| api | 171（含 real-openjiuwen-gate 12 tests + opencode-engine 22 tests） |
 | web | 27 |
-| python | 10 |
+| python | 8（python-runner）+ 17（openjiuwen-runtime，demo 分支） |
 | e2e | 4（Tarot Agent / Presales Workflow / Weather Agent / Contract Review Workflow） |
-| e2e:real | 真实链路（DeepSeek + OpenCode + Docker），无密钥自动 skip |
+| e2e:real | 真实链路（需 RUN_LLM_API_KEY + Docker + sandbox image），无密钥自动 skip |
 
 lint / typecheck 全绿。
 
@@ -332,24 +347,24 @@ lint / typecheck 全绿。
 
 | 能力 | 状态 | 降级方式 |
 | --- | --- | --- |
-| Docker / Podman | 当前环境不可用 | 保留 `MockSandboxRunner`（进程级 allowlist / 超时 / 工作区隔离 / 日志采集） |
-| OpenCode | 需 opencode 二进制 + 模型配置 | 不可用则回退 `TemplateEngine`（事件流明确标记 fallback） |
-| OpenJiuwen 真实 SDK | 未盘点 | 使用 mock runtime 跑通无密钥 Demo |
+| Docker / Podman | 当前环境可用 | 保留 `MockSandboxRunner` 作为 fallback（进程级 allowlist / 超时 / 隔离 / 日志） |
+| OpenCode | 需 opencode 二进制 + 模型配置 | P4 默认 **fail-loud**（`OPENCODE_ALLOW_FALLBACK=false`）；显式开启才回退 TemplateEngine |
+| OpenJiuwen 真实 SDK | ✅ 0.1.15 已盘点 | Docker sandbox 预装（`COPY --from=agent-core`）；API 文档见 `docs/technical/openjiuwen_api_inventory.md` |
 | gVisor | 不可用 | 保留 `runtime: gvisor` 配置与文档，使用 Docker / mock fallback |
 
 > 主服务进程不直接执行生成代码：所有 `python` / `pytest` / 生成物执行经 `SandboxService` 调度。
 
 ## 设计文档
 
-- `docs/prd/PRD-v0.3-agent-builder.md`
-- `docs/technical/agent_builder_architecture.md`
-- `docs/technical/runtime_and_sandbox.md`
-- `docs/technical/p2_plan.md`
-- `docs/technical/p2_defects.md`
-- `docs/technical/p3_work_items.md`
-- `docs/technical/p3_demo_runbook.md`
-- `docs/technical/p0_implementation_plan.md`
-- `docs/technical/p0_acceptance_report.md`
-- `docs/technical/p1_implementation_report.md`
-- `docs/technical/p1_llm_opencode_execution_plan.md`
-- `docs/technical/architecture_clarity_review.md`
+| 文档 | 说明 |
+|---|---|
+| `docs/prd/PRD-v0.3-agent-builder.md` | 产品需求定义（P4 更新：真实 LLM + OpenJiuwen + fail-loud + §18 对照表） |
+| `docs/technical/p4_work_items.md` | **P4 实施说明书**（M1–M8 + 最终验收清单） |
+| `docs/technical/openjiuwen_api_inventory.md` | **OpenJiuwen 0.1.15 API 盘点**（import/返回结构/已知陷阱） |
+| `docs/technical/p4_workflow_decision.md` | Workflow real path 决策（P4 不验收） |
+| `docs/technical/agent_builder_architecture.md` | 系统架构设计 |
+| `docs/technical/runtime_and_sandbox.md` | 运行时与沙箱设计 |
+| `docs/technical/p2_plan.md` | P2 实施计划 |
+| `docs/technical/p3_work_items.md` | P3 工作项 |
+| `docs/technical/p3_demo_runbook.md` | P3 Demo 执行手册 |
+| `docs/technical/p0_acceptance_report.md` | P0 验收报告 |

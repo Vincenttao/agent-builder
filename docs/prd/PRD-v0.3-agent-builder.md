@@ -4,15 +4,15 @@
 
 本文档是 Agent Builder Demo v0.3 的产品需求定义。技术设计 Agent 基于本文档完成了系统架构、模块设计、接口设计和代码实现。
 
-**当前代码实现边界（P3 复盘，2026-07-13）：**
+**当前代码实现边界（P4 完成，2026-07-13）：**
 
-- 核心产品闭环已具备：首页输入 -> Spec 确认 -> 代码生成 -> smoke test -> 测试台/运行页 -> 源码查看 -> 导出。
-- Spec 解析统一走 LLM parser 或测试 parser，不再有针对 demo prompt 的确定性关键词绕过。
-- 代码生成存在两条路径：`OpenCodeEngine` 是真实 OpenJiuwen + LLM 调试和验收路径；`TemplateEngine` 仅保留为测试夹具和 lightweight-runtime 示例。
-- `TemplateEngine` 生成的 `src/openjiuwen_runtime/` 是轻量兼容运行时，不得标记为真实 OpenJiuwen，也不得作为真实链路 fallback 自动接管失败。
-- OpenCode 真实链路必须 fail loud：当 OpenCode、Docker、OpenJiuwen SDK、真实 LLM 配置或生成产物不满足要求时，系统应失败并给出诊断，不允许静默切换 TemplateEngine。
-- 当前 Agent 真实 OpenJiuwen 约束主要由 OpenCode prompt 和 smoke gate 驱动，P4 必须把这些约束提升为代码级验收 gate。
-- Workflow 真实 OpenJiuwen 集成尚未完成，P4 不得把 lightweight workflow 视为真实 OpenJiuwen workflow。
+- 核心产品闭环已具备：首页输入 → Spec 确认 → 代码生成 → **产物 Gate** → smoke test → 测试台/运行页 → 源码查看 → 导出。
+- **P4 完成**：真实 OpenJiuwen 0.1.15 集成、fail-loud 默认、产物 Gate (12 规则)、RUN_LLM_* 契约、ReAct trace、项目骨架、API 盘点。详见 `docs/technical/p4_work_items.md` §17 验收清单。
+- Spec 解析统一走 LLM parser，不再有针对 demo prompt 的确定性关键词绕过。
+- `OpenCodeEngine` 是唯一真实 OpenJiuwen 验收路径；`TemplateEngine` 降级为 lightweight/test-only。
+- OpenCode 真实链路 **fail-loud 已落地**：`OPENCODE_ALLOW_FALLBACK=false` 默认，fallback endpoint 需 `ENABLE_TEMPLATE_FALLBACK=true` 启用。
+- Agent 真实 OpenJiuwen 约束已提升为代码级 gate（`real-openjiuwen-gate.ts`）+ 项目骨架（`agent-real-openjiuwen/`）。
+- Workflow 真实 OpenJiuwen 集成不在 P4 范围；Workflow 标记为 lightweight。
 
 本 PRD 的核心不是完整商业化平台，而是一个可演示的 Demo：
 
