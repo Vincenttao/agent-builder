@@ -128,6 +128,16 @@ agent.ability_manager.add(my_tool.card)     # .card 是 ToolCard
 | `model_name` | str | 模型名 |
 | `verify_ssl` | bool | 默认 False |
 
+### 4.3 已知陷阱（P4 E2E 实测）
+
+| 陷阱 | 错误写法 | 正确写法 |
+|---|---|---|
+| **DEFAULT_RUNNER_CONFIG 不存在** | `from openjiuwen.core.runner import DEFAULT_RUNNER_CONFIG` → `ImportError` | `from openjiuwen.core.runner import Runner` — Runner 已自动初始化 |
+| **@tool 返回 LocalFunction** | `result = my_tool(x="hi")` → `TypeError: not callable` | `result = my_tool._func(x="hi")` 或分离实现函数 + `tool(...)(_impl)` |
+| **ability_manager.tools 不存在** | `agent.ability_manager.tools` → `AttributeError` | `agent.ability_manager._tools` (dict) |
+| **list_tool_info 是异步的** | `agent.ability_manager.list_tool_info()` → 返回 coroutine | `await agent.ability_manager.list_tool_info()` |
+| **pyproject.toml 含 openjiuwen** | `dependencies = ["openjiuwen"]` → pip install 失败 | 不写 openjiuwen（Docker 预装） |
+
 ### 4.2 环境变量约定（Agent Builder）
 
 P4 生成 Agent 从以下环境变量读取配置：

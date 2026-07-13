@@ -548,6 +548,60 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '6. **Runner 初始化**：使用真实 openjiuwen 时，Runner 的初始化日志也会输出到 stdout。',
       '   生成代码中 `Runner.resource_mgr.add_tool(...)` 等调用前的 openjiuwen import 顺序不影响功能，',
       '   但不要额外调用 `Runner.start()` 或 `Runner.set_config()` 以外的 Runner 初始化。',
+      '',
+      '## 🔴 已验证的 API 陷阱（openjiuwen 0.1.15 实测，违反必失败）',
+      '',
+      '以下错误已在真实 openjiuwen 0.1.15 沙箱中多次复现。**必须遵守，不得尝试。**',
+      '',
+      '### DEFAULT_RUNNER_CONFIG 不存在',
+      '`from openjiuwen.core.runner import DEFAULT_RUNNER_CONFIG` 在 0.1.15 中会报 `ImportError`。',
+      '正确写法：',
+      '```python',
+      'from openjiuwen.core.runner import Runner',
+      'from openjiuwen.core.runner.runner_config import RunnerConfig',
+      '# 不需要 Runner.set_config()——Runner 已有默认配置。',
+      '# 如果必须覆盖，用 RunnerConfig(distributed_mode=False)。',
+      '```',
+      '**不要写 `DEFAULT_RUNNER_CONFIG.model_copy(deep=True)`**——这会导致 `ImportError`。',
+      '',
+      '### @tool 装饰器返回 LocalFunction，不可直接调用',
+      '```python',
+      '@tool(name="foo", description="bar")',
+      'def foo(x: str) -> dict:',
+      '    return {"result": x}',
+      '',
+      '# ❌ 错误：LocalFunction 不是 callable',
+      'result = foo(x="hello")  # TypeError: LocalFunction object is not callable',
+      '',
+      '# ✅ 正确：通过 _func 属性或 invoke() 调用',
+      'result = foo._func(x="hello")',
+      '# 或者统一用 invoke()：',
+      'result = foo.invoke({"x": "hello"})  # 异步，需要 await',
+      '```',
+      '**所有 smoke test 中直接调用 @tool 函数必须使用 `._func(...)` 或 `await .invoke(...)`。**',
+      '或者在 agent.py 中将工具实现为普通函数，另外用 @tool 包装：',
+      '```python',
+      'def _do_analyze(text: str) -> dict:  # 普通函数，可直接调用和测试',
+      '    ...',
+      'analyze_resume = tool(name="analyze_resume", description="...")(_do_analyze)',
+      '# 测试中直接 import _do_analyze 调用，避免 LocalFunction 限制',
+      '```',
+      '',
+      '### ability_manager 无 .tools 属性',
+      '`agent.ability_manager.tools` 不存在。正确检查已注册工具的方式：',
+      '```python',
+      '# ✅ 方式 1：直接检查 _tools dict',
+      'tool_names = list(agent.ability_manager._tools.keys())',
+      '# ✅ 方式 2：异步 list_tool_info()',
+      '# tool_infos = await agent.ability_manager.list_tool_info()',
+      '```',
+      '**smoke test 中优先用 `._tools`（同步），避免 async。**',
+      '',
+      '### pyproject.toml 不应包含 openjiuwen 依赖',
+      'openjiuwen 已在 Docker 镜像中预装，不是 PyPI 包。生成的 `pyproject.toml` 中：',
+      '- **不要**写 `"openjiuwen"` 在 dependencies 里（会导致 pip install 失败）',
+      '- 可以写 `setuptools`, `pytest`（已在镜像中，不影响）',
+      '- 如果代码中用了 `requests`、`pyyaml` 等，可以声明依赖（也已在镜像中）',
       '  os.getenv("AGENT_BUILDER_MODEL", "deepseek-v4-flash")',
       '',
       '## 必须创建的文件',
@@ -573,17 +627,20 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       'os.environ.setdefault("LOGURU_LEVEL", "WARNING")',
       'from openjiuwen.core.single_agent import AgentCard, ReActAgent, ReActAgentConfig',
       'from openjiuwen.core.foundation.tool import tool',
-      'from openjiuwen.core.runner import Runner, DEFAULT_RUNNER_CONFIG',
+      'from openjiuwen.core.runner import Runner',
       '',
-      '# ── 工具定义 ──',
+      '# ── 工具定义（分离实现与 @tool 包装）──',
       ...(isAgent
         ? spec.tools.map((t) => {
             const escapedDesc = t.description.replace(/"/g, '\\"');
-            return '@tool(name="' + t.name + '", description="' + escapedDesc + '")\n'
-              + 'def ' + t.name + '(**kwargs):\n'
+            return '# 实现函数（可直接调用，便于测试）\n'
+              + 'def _' + t.name + '(**kwargs) -> dict:  # 参数按 input_schema\n'
               + '    """' + t.description + '"""\n'
               + '    # 实现业务逻辑\n'
-              + '    return {"status": "ok"}';
+              + '    return {"status": "ok"}\n'
+              + '\n'
+              + '# @tool 包装（供 ReActAgent 使用）\n'
+              + t.name + ' = tool(name="' + t.name + '", description="' + escapedDesc + '")(_' + t.name + ')';
           })
         : []
       ),
@@ -607,8 +664,7 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '# ── 注册工具 ──',
       ...(isAgent
         ? [
-            'runner_config = DEFAULT_RUNNER_CONFIG.model_copy(deep=True)',
-            'Runner.set_config(runner_config)',
+            '# Runner 在 import 时已自动初始化，不需要手动 set_config',
             ...spec.tools.map((t) => 'Runner.resource_mgr.add_tool(' + t.name + ')\nagent.ability_manager.add(' + t.name + '.card)'),
           ]
         : []
