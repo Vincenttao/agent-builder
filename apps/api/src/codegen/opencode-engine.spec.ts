@@ -380,7 +380,7 @@ describe('OpenCodeEngine', () => {
       expect(prompt).toContain('def run_agent');
       expect(prompt).toContain('`pytest tests/ -q` 必须通过');
       expect(prompt).toContain('setuptools.build_meta');
-      expect(prompt).toContain('测试不要求真实 LLM 调用');
+      expect(prompt).toContain('openjiuwen 框架已预装在沙箱中');
     });
   });
 
