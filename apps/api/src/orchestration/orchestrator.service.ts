@@ -23,6 +23,7 @@ import { SpecRepository } from '../generations/repositories/spec.repository';
 import { CodeGenerationService } from '../codegen/codegen.service';
 import type { EngineName } from '../codegen/engine';
 import { lintGeneratedProject } from '../codegen/project-lint';
+import { validateRealOpenJiuwenAgent } from '../codegen/real-openjiuwen-gate';
 import { isCommandAllowed } from '../sandbox/command-allowlist';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { projectRoot } from '../common/workspace';
@@ -113,6 +114,33 @@ export class OrchestratorService {
             message: `Lint 警告：${lintMsg}`,
             payload: { lint_warning: true },
           });
+        }
+
+        // P4 M4: real OpenJiuwen product gate (opencode only).
+        if (this.effectiveEngineName(generationId) === 'opencode') {
+          const gateResult = validateRealOpenJiuwenAgent(projectPath, spec);
+          if (!gateResult.ok) {
+            const gateMsg = `产物 gate 失败：${gateResult.errors.join('；')}`;
+            this.logger.warn(gateMsg);
+            await this.eventService.record({
+              generation_id: generationId,
+              type: EventType.Thought,
+              message: gateMsg,
+              payload: { gate_errors: gateResult.errors, gate_warnings: gateResult.warnings },
+            });
+            throw new AgentBuilderError(ErrorCode.CodeGenerationFailed, gateMsg);
+          }
+          if (gateResult.warnings.length > 0) {
+            for (const w of gateResult.warnings) {
+              this.logger.warn(`opencode gate warning: ${w}`);
+            }
+            await this.eventService.record({
+              generation_id: generationId,
+              type: EventType.Thought,
+              message: `产物 gate 警告：${gateResult.warnings.join('；')}`,
+              payload: { gate_warnings: gateResult.warnings },
+            });
+          }
         }
 
         const testResult = await this.smokeTest(generationId, spec);
