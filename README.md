@@ -39,7 +39,8 @@ agent-builder/
 ```bash
 # 仓库根目录
 npm install                 # 安装所有 workspace 依赖（含 Next.js / NestJS / Playwright）
-cd services/python-runner && pip install -e ".[dev]" && cd -   # 可选：安装 python-runner CLI
+pip install --upgrade pip setuptools          # 确保支持 PEP 660 editable install
+cd services/python-runner && pip install -e ".[dev]" && cd -  # 可选：安装 python-runner CLI
 ```
 
 ## 部署
@@ -52,6 +53,7 @@ git clone <repo-url> agent-builder && cd agent-builder
 
 # 2. 安装依赖
 npm install
+pip install --upgrade pip setuptools         # 确保支持 PEP 660
 cd services/python-runner && pip install -e ".[dev]" && cd -
 
 # 3. 构建 sandbox 镜像（opencode 代码生成需要）
@@ -217,6 +219,15 @@ workspace/
 设置 `METADATA_DB_PATH=:memory:` 使用内存数据库（CI/E2E 默认）。
 
 ### 常见问题
+
+**Q: `pip install -e ".[dev]"` 报错 "missing the 'build_editable' hook"**
+
+pip 或 setuptools 版本过旧：
+
+```bash
+pip install --upgrade pip setuptools
+cd services/python-runner && pip install -e ".[dev]" && cd -
+```
 
 **Q: `npm run dev:api:llm` 启动报错 "Cannot find module"**
 
