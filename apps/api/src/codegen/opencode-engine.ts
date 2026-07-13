@@ -144,6 +144,25 @@ export class OpenCodeEngine implements CodeGenerationEngine {
   ): Promise<GenerationResult> {
     callbacks?.onEvent?.(EventType.OpencodeStarted, 'OpenCode 会话启动');
 
+    // P4: Copy the real-openjiuwen skeleton into the project path FIRST.
+    // opencode only needs to fill in TODO sections — tool implementations,
+    // system prompt, and README.  The skeleton already has correct imports,
+    // ReActAgent setup, Runner pattern, test structure, and pyproject.toml.
+    const isAgent = isAgentSpec(spec);
+    const skeletonDir = path.join(
+      process.env.WORKSPACE_DIR ? path.dirname(process.env.WORKSPACE_DIR) : path.resolve(process.cwd(), '..', '..'),
+      'packages', 'generated-project-templates',
+      isAgent ? 'agent-real-openjiuwen' : 'agent-real-openjiuwen',  // TODO: workflow skeleton
+    );
+    if (fs.existsSync(skeletonDir)) {
+      copySkeleton(skeletonDir, context.projectPath);
+      callbacks?.onEvent?.(
+        EventType.Thought,
+        '已复制 real-openjiuwen 项目骨架',
+        { skeleton: isAgent ? 'agent-real-openjiuwen' : 'agent-real-openjiuwen' },
+      );
+    }
+
     // Write the prompt for opencode to read.
     const promptDir = path.join(context.projectPath, '.agent_builder');
     fs.mkdirSync(promptDir, { recursive: true });
@@ -506,7 +525,22 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           runtime: { framework: 'openjiuwen', mode: 'real_openjiuwen' },
         };
     const lines = [
-      `# 生成 OpenJiuwen ${isAgent ? 'Agent' : 'Workflow'} 工程`,
+      `# OpenJiuwen ${isAgent ? 'Agent' : 'Workflow'} — 填充项目骨架`,
+      '',
+      '**项目骨架文件已创建在 /workspace 中。不要从头创建文件，只需修改已有文件中的 TODO 部分。**',
+      '',
+      '已完成部分（请勿改动）：',
+      '- src/agents/agent.py: openjiuwen import、ReActAgent 配置、Runner setup、run_agent 入口',
+      '- tests/test_agent_smoke.py: manifest 检查、agent 结构测试、run_agent mock 测试',
+      '- pyproject.toml: build 配置（不含 openjiuwen 依赖）',
+      '- src/main.py: CLI 入口',
+      '',
+      '你只需要完成：',
+      '1. 填充 SYSTEM_PROMPT（Spec 的 system_prompt + 工具列表说明）',
+      '2. 实现工具函数：def _toolname(**kwargs) -> dict，加上具体业务逻辑',
+      '3. 用 toolname = tool(name="...", description="...")(_toolname) 包装',
+      '4. 更新 TOOLS 列表和 AgentCard(name=..., description=...)',
+      '5. 更新 README.md 的 TODO 内容',
       '',
       `名称：${spec.name}`,
       `描述：${spec.description}`,
@@ -522,15 +556,11 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       '- **openjiuwen 0.1.15**（完整框架）：`ReActAgent`, `ReActAgentConfig`, `AgentCard`, `@tool`, `Runner`',
       '- **python_runner**：平台的 runner CLI，不要自己实现',
       '',
-      '如果确实需要上述列表之外的包，可以直接 pip install（生成和运行阶段均有网络）。',
-      '但预装包已覆盖绝大多数场景，优先使用预装包可以避免重复下载，加速生成。',
-      'pyproject.toml 的依赖列表应与实际使用的包保持一致。',
-      '',
       'LLM 凭证从环境变量读取，不需要硬编码：',
       '  os.getenv("DEEPSEEK_API_KEY")',
       '  os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")',
       '',
-      '## ⚠️ 已知错误模式（严禁重复，已验证会导致生成失败）',
+      '',
       '',
       '1. **不要 pip install openjiuwen**：openjiuwen 已在镜像中预装，',
       '   `pip install openjiuwen` 会失败（它不在 PyPI 上），浪费时间。',
@@ -719,6 +749,20 @@ export class OpenCodeEngine implements CodeGenerationEngine {
 
 function isAgentSpec(spec: AgentSpec | WorkflowSpec): spec is AgentSpec {
   return 'tools' in spec && !('nodes' in spec);
+}
+
+/** Recursively copy a directory, overwriting existing files. */
+function copySkeleton(srcDir: string, destDir: string): void {
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copySkeleton(src, dest);
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  }
 }
 
 /** Generate spec-derived code hints for a real-openjiuwen Agent. */

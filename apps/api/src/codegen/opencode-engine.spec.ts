@@ -215,12 +215,15 @@ describe('OpenCodeEngine', () => {
       expect(filePaths).toContain('src/agents/agent.py');
       expect(filePaths).toContain('README.md');
       expect(filePaths).toContain('tests/test_agent_smoke.py');
+      expect(filePaths).toContain('src/main.py');
+      expect(filePaths).toContain('pyproject.toml');
       expect(filePaths).not.toContain(expect.stringContaining('.agent_builder'));
 
       // Events
       expect(events).toContain(EventType.OpencodeStarted);
       const fileEvents = events.filter((t) => t === EventType.OpencodeFileChanged);
-      expect(fileEvents.length).toBe(3);
+      // P4: skeleton adds pyproject.toml + src/main.py on top of the 3 pre-created files.
+      expect(fileEvents.length).toBe(5);
       expect(events).toContain(EventType.OpencodeFinished);
 
       fs.rmSync(projectPath, { recursive: true, force: true });
