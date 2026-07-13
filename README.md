@@ -33,7 +33,7 @@ agent-builder/
 | Node.js | ≥ 20（推荐 22） | 前端 + 编排后端 |
 | Python | ≥ 3.10（3.12 已验证） | Python runner、生成物、pytest |
 | Docker / Podman + buildx | ≥ 20.10 + buildx | Docker sandbox + 镜像构建（Bake 需 buildx） |
-| **agent-core** | openjiuwen 0.1.15 | 需 clone 到同级目录（sandbox 构建依赖） |
+| git (submodule) | — | `agent-core` 作为 git submodule 管理（自动随 `git clone --recurse-submodules` 拉取） |
 
 ## 安装
 
@@ -49,18 +49,16 @@ cd services/python-runner && pip install -e ".[dev]" && cd -  # 可选：安装 
 ### 环境准备
 
 ```bash
-# 1. 克隆仓库
-git clone <repo-url> agent-builder && cd agent-builder
+# 1. 克隆仓库（含 submodule）
+git clone --recurse-submodules <repo-url> agent-builder && cd agent-builder
+# 如果已 clone 但没有 submodule：git submodule update --init --recursive
 
-# 2. 克隆 OpenJiuwen agent-core（sandbox 构建依赖，必须同级目录）
-git clone https://gitcode.com/openJiuwen/agent-core.git ../agent-core
-
-# 3. 安装依赖
+# 2. 安装依赖
 npm install
 pip install --upgrade pip setuptools         # 确保支持 PEP 660
 cd services/python-runner && pip install -e ".[dev]" && cd -
 
-# 4. 构建 sandbox 镜像（opencode 代码生成需要）
+# 3. 构建 sandbox 镜像（opencode 代码生成需要）
 docker compose up --build
 ```
 
@@ -224,6 +222,14 @@ workspace/
 
 ### 常见问题
 
+**Q: `git clone` 后 `docker compose build` 报错找不到 agent-core**
+
+clone 时未加 `--recurse-submodules`：
+
+```bash
+git submodule update --init --recursive
+```
+
 **Q: `pip install -e ".[dev]"` 报错 "missing the 'build_editable' hook"**
 
 pip 或 setuptools 版本过旧：
@@ -243,10 +249,10 @@ npm run build:contracts
 
 **Q: `docker compose up --build` 报错 "failed to get build context agent-core"**
 
-agent-core 仓库未克隆到同级目录。sandbox 镜像构建依赖 `../agent-core`（OpenJiuwen SDK）：
+git submodule 未初始化：
 
 ```bash
-git clone https://gitcode.com/openJiuwen/agent-core.git ../agent-core
+git submodule update --init --recursive
 docker compose up --build   # 重试
 ```
 
