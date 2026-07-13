@@ -10,16 +10,15 @@ import { SandboxService } from '../sandbox/sandbox.service';
   providers: [
     TemplateEngine,
     {
-      // requireReal + allowFallback default from env; OpenCodeEngine also takes
-      // TemplateEngine + SandboxService. P3: OPENCODE_ALLOW_FALLBACK=false makes
-      // a missing opencode binary a hard failure (no silent template fallback).
+      // P4: requireReal + allowFallback from env. Fallback defaults to false
+      // (fail loud) — must explicitly opt in with OPENCODE_ALLOW_FALLBACK=true.
       provide: OpenCodeEngine,
       useFactory: (templateEngine: TemplateEngine, sandboxService: SandboxService) =>
         new OpenCodeEngine(
           templateEngine,
           sandboxService,
           process.env.OPENCODE_REQUIRE_REAL === 'true',
-          process.env.OPENCODE_ALLOW_FALLBACK !== 'false',
+          process.env.OPENCODE_ALLOW_FALLBACK === 'true',
         ),
       inject: [TemplateEngine, SandboxService],
     },

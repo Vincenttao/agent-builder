@@ -39,6 +39,8 @@ import {
   type FileTreeNode,
   type FileContentResponse,
   type CreateExportResponse,
+  AgentBuilderError,
+  ErrorCode,
 } from '@agent-builder/shared-contracts';
 
 /**
@@ -127,10 +129,16 @@ export class OrchestratorController {
     return this.orchestrator.repair(id, body.instruction);
   }
 
-  // ─── P3-003: Template fallback ───────────────────────────────────
+  // ─── P4: Template fallback (default disabled, dev-only rescue hatch) ──
 
   @Post(':id/fallback')
   async fallback(@Param('id') id: string): Promise<RepairResponse> {
+    if (process.env.ENABLE_TEMPLATE_FALLBACK !== 'true') {
+      throw new AgentBuilderError(
+        ErrorCode.CodeGenerationFailed,
+        'Template fallback 已默认禁用（P4 fail-loud）。设置 ENABLE_TEMPLATE_FALLBACK=true 启用。',
+      );
+    }
     return this.orchestrator.fallback(id);
   }
 

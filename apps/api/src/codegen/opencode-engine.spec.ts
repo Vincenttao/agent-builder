@@ -83,7 +83,8 @@ describe('OpenCodeEngine', () => {
     it('falls back to TemplateEngine with warning event', async () => {
       const templateEngine = new TemplateEngine();
       const sandbox = buildSandboxService();
-      const engine = new OpenCodeEngine(templateEngine, sandbox, true);
+      // P4: fallback now defaults to false; must explicitly opt in.
+      const engine = new OpenCodeEngine(templateEngine, sandbox, true, true);
       jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(false);
       expect(engine.isOpencodeAvailable()).toBe(false);
 
@@ -116,7 +117,7 @@ describe('OpenCodeEngine', () => {
           TAROT_AGENT_SPEC as AgentSpec,
           { generationId: 'gen', versionId: 'ver', projectPath },
         ),
-      ).rejects.toThrow(/OPENCODE_ALLOW_FALLBACK=false/);
+      ).rejects.toThrow(/真实链路不可用/);
       // No template files written — the engine did not silently substitute.
       expect(fs.existsSync(path.join(projectPath, 'src/agents/agent.py'))).toBe(false);
 

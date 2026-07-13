@@ -106,7 +106,8 @@ export class TemplateEngine implements CodeGenerationEngine {
       test_command: testCommand,
       run_command: isAgent ? 'python src/main.py' : 'python -m src.workflows.workflow',
       example_input: isAgent ? '你好' : { requirement_doc: '示例需求文档内容' },
-      runtime: { framework: 'openjiuwen', mode: 'real' },
+      engine: 'template',
+      runtime: { framework: 'openjiuwen-compatible', mode: 'lightweight' },
     };
     const manifestPath = path.join(context.projectPath, 'agent_builder_manifest.json');
     const manifestContent = JSON.stringify(manifest, null, 2);

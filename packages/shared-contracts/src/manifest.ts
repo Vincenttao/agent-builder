@@ -6,6 +6,9 @@
  * example data from it; exports include it for downstream tooling.
  */
 
+export type RuntimeFramework = 'openjiuwen' | 'openjiuwen-compatible';
+export type RuntimeMode = 'real_openjiuwen' | 'lightweight' | 'mock_compatible' | 'test_only';
+
 export interface AgentBuilderManifest {
   schema_version: '1.0';
   /** 'agent' | 'workflow' */
@@ -18,9 +21,11 @@ export interface AgentBuilderManifest {
   run_command: string;
   /** A sample input that exercises the project. */
   example_input: string | Record<string, unknown>;
-  /** Runtime metadata. */
+  /** Code generation engine that produced this project. */
+  engine?: 'opencode' | 'template';
+  /** Runtime metadata — P4: distinguishes real-openjiuwen from lightweight/test-only. */
   runtime: {
-    framework: 'openjiuwen';
-    mode: 'real';
+    framework: RuntimeFramework;
+    mode: RuntimeMode;
   };
 }

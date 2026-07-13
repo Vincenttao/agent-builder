@@ -49,8 +49,8 @@ export class OpenCodeEngine implements CodeGenerationEngine {
     private readonly sandbox: SandboxService,
     private readonly requireReal: boolean = false,
     /** When requireReal=true but the opencode binary is missing, fall back to
-     * TemplateEngine (true, default) or hard-fail (false). P3: OPENCODE_ALLOW_FALLBACK. */
-    private readonly allowFallback: boolean = true,
+     * TemplateEngine (true) or hard-fail (false, default). P4: OPENCODE_ALLOW_FALLBACK. */
+    private readonly allowFallback: boolean = false,
   ) {}
 
   isOpencodeAvailable(): boolean {
@@ -75,9 +75,18 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       // hard failure (no silent TemplateEngine substitution), so a "must be
       // real opencode" demo fails loudly instead of looking like opencode.
       if (!this.allowFallback) {
+        const checks = [
+          { item: 'opencode binary', ok: this.isOpencodeAvailable() },
+          { item: 'Docker', ok: this.sandbox.isDockerAvailable() },
+          { item: 'OPENCODE_API_KEY', ok: !!process.env.OPENCODE_API_KEY },
+          { item: 'OPENCODE_MODEL', ok: !!process.env.OPENCODE_MODEL },
+          { item: 'OPENCODE_PROVIDER', ok: !!process.env.OPENCODE_PROVIDER },
+        ];
+        const missing = checks.filter((c) => !c.ok).map((c) => c.item);
         throw new AgentBuilderError(
           ErrorCode.CodeGenerationFailed,
-          'OpenCode 不可用（opencode 二进制未找到），且 OPENCODE_ALLOW_FALLBACK=false，拒绝回退到 TemplateEngine',
+          `OpenCode 真实链路不可用。缺少：${missing.join('、')}。` +
+          '设置 OPENCODE_ALLOW_FALLBACK=true 允许回退到 TemplateEngine（仅用于测试）。',
         );
       }
       this.logger.warn('OpenCode unavailable — falling back to TemplateEngine.');
@@ -475,7 +484,8 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           test_command: 'pytest tests/test_agent_smoke.py -q',
           run_command: 'python src/main.py',
           example_input: exampleInput,
-          runtime: { framework: 'openjiuwen', mode: 'real' },
+          engine: 'opencode',
+          runtime: { framework: 'openjiuwen', mode: 'real_openjiuwen' },
         }
       : {
           schema_version: '1.0',
@@ -484,7 +494,8 @@ export class OpenCodeEngine implements CodeGenerationEngine {
           test_command: 'pytest tests/test_workflow_smoke.py -q',
           run_command: 'python -m src.main',
           example_input: exampleInput,
-          runtime: { framework: 'openjiuwen', mode: 'real' },
+          engine: 'opencode',
+          runtime: { framework: 'openjiuwen', mode: 'real_openjiuwen' },
         };
     const lines = [
       `# 生成 OpenJiuwen ${isAgent ? 'Agent' : 'Workflow'} 工程`,
