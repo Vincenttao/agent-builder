@@ -174,7 +174,14 @@ export class RunService {
 
     // P4: openjiuwen import-time logs may pollute stdout before the JSON line.
     // Strip everything before the first '{' so the runner can parse the result.
-    const jsonStart = stdout.lastIndexOf('{"status"');
+    // P4: find the JSON object in stdout. Python runner prints with indent=2,
+    // so the JSON starts with "{\n  \"status\"" not "{\"status\"".
+    // Find the last "status" key, then the opening brace before it.
+    const statusPos = stdout.lastIndexOf('"status"');
+    let jsonStart = 0;
+    if (statusPos > 0) {
+      jsonStart = stdout.lastIndexOf('{', statusPos);
+    }
     if (jsonStart > 0) {
       this.logger.debug(`stripping ${jsonStart} bytes of log noise from stdout`);
       stdout = stdout.slice(jsonStart);
