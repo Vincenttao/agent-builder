@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from unittest.mock import patch
 
-# Import the plain implementation functions (not @tool wrappers — those are LocalFunction).
-# Tests should import and call the _impl functions directly.
-from agents.agent import run_agent, agent, TOOLS
+# Ensure src/ is importable regardless of how the test runner sets up paths.
+_src = os.path.join(os.path.dirname(__file__), '..', 'src')
+if _src not in sys.path:
+    sys.path.insert(0, _src)
+
+from agents.agent import run_agent, agent, TOOLS  # noqa: E402
 
 # ═══════════════════════════════════════════════════════════════════════
 # Manifest validation
