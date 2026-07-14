@@ -69,7 +69,7 @@ docker compose up --build
 **步骤 1：配置环境变量**
 
 ```bash
-cp apps/api/.env.example apps/api/.env
+cp .env.example apps/api/.env
 ```
 
 编辑 `apps/api/.env`，核心配置：
@@ -318,7 +318,7 @@ rm -rf workspace/generated workspace/runs workspace/exports workspace/metadata.d
 
 ## P2：统一 LLM 解析、Draft 确认流程、OpenCode 生成、体验增强
 
-所有 prompt 统一走 LLM（或 mock LLM）解析，不再有针对 demo prompt 的确定性关键词绕过。配置见 `apps/api/.env.example`：
+所有 prompt 统一走 LLM（或 mock LLM）解析，不再有针对 demo prompt 的确定性关键词绕过。配置见 `.env.example`（仓库根目录）：
 
 - `SPEC_LLM_PROVIDER`：`mock`（默认，CI/E2E 无密钥）或 `openai-compatible`（真实 Chat Completions 网关，读 `SPEC_LLM_BASE_URL` / `SPEC_LLM_API_KEY` / `SPEC_LLM_MODEL`）。
 - `CODEGEN_ENGINE`：`template`（默认，确定性模板）或 `opencode`（真实 OpenCode via SandboxService，需 `OPENCODE_REQUIRE_REAL=true`）。
