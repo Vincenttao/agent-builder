@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "project_type": "agent",
+  "entrypoint": "src/agents/agent.py",
+  "test_command": "pytest tests/test_agent_smoke.py -q",
+  "run_command": "python src/main.py",
+  "example_input": "TODO: Replace with Spec.example_input",
+  "engine": "opencode",
+  "runtime": {
+    "framework": "openjiuwen",
+    "mode": "real_openjiuwen"
+  }
+}
