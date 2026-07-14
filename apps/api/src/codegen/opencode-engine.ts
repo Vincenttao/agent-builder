@@ -322,6 +322,17 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       };
       return target ? `${verb[action] ?? action} ${this.shortPath(target)}` : (verb[action] ?? action);
     }
+
+    // ── Todo list ────────────────────────────────────────────────────
+    if (raw === '# Todos') return '规划任务列表';
+    const todoItem = raw.match(/^\[([•✓ ])\]\s*(.+)/);
+    if (todoItem) {
+      const status = todoItem[1] === '✓' ? '完成' : todoItem[1] === '•' ? '进行中' : '待办';
+      return `${status} ${todoItem[2].trim().slice(0, 80)}`;
+    }
+    const dollarCmd = raw.match(/^\$\s+(.+)/);
+    if (dollarCmd) return `执行 ${dollarCmd[1].trim().slice(0, 80)}`;
+
     const buildMatch = raw.match(/^>\s*build\s*[·-]\s*(.+)/);
     if (buildMatch) return `开始构建（${buildMatch[1].trim()}）`;
     const testsPass = raw.match(/^All\s+(\d+)\s+tests?\s+pass/i);
