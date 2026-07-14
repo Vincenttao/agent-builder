@@ -71,13 +71,10 @@ export class OpenCodeEngine implements CodeGenerationEngine {
       return this.generateMock(spec, context, callbacks);
     }
 
-    if (!this.isOpencodeAvailable()) {
-      // P3: OPENCODE_ALLOW_FALLBACK=false makes a missing opencode binary a
-      // hard failure (no silent TemplateEngine substitution), so a "must be
-      // real opencode" demo fails loudly instead of looking like opencode.
+    // opencode runs inside the Docker sandbox image — check Docker, not the host binary.
+    if (!this.sandbox.isDockerAvailable()) {
       if (!this.allowFallback) {
         const checks = [
-          { item: 'opencode binary', ok: this.isOpencodeAvailable() },
           { item: 'Docker', ok: this.sandbox.isDockerAvailable() },
           { item: 'OPENCODE_API_KEY', ok: !!process.env.OPENCODE_API_KEY },
           { item: 'OPENCODE_MODEL', ok: !!process.env.OPENCODE_MODEL },

@@ -85,8 +85,8 @@ describe('OpenCodeEngine', () => {
       const sandbox = buildSandboxService();
       // P4: fallback now defaults to false; must explicitly opt in.
       const engine = new OpenCodeEngine(templateEngine, sandbox, true, true);
-      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(false);
-      expect(engine.isOpencodeAvailable()).toBe(false);
+      jest.spyOn(sandbox, 'isDockerAvailable').mockReturnValue(false);
+      expect(sandbox.isDockerAvailable()).toBe(false);
 
       const projectPath = tmpProject();
       const events: EventType[] = [];
@@ -109,7 +109,7 @@ describe('OpenCodeEngine', () => {
       const sandbox = buildSandboxService();
       // 4th arg allowFallback=false → missing binary must throw, not fall back.
       const engine = new OpenCodeEngine(templateEngine, sandbox, true, false);
-      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(false);
+      jest.spyOn(sandbox, 'isDockerAvailable').mockReturnValue(false);
 
       const projectPath = tmpProject();
       await expect(
@@ -128,7 +128,7 @@ describe('OpenCodeEngine', () => {
       const templateEngine = new TemplateEngine();
       const sandbox = buildSandboxService();
       const engine = new OpenCodeEngine(templateEngine, sandbox, true, true);
-      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(false);
+      jest.spyOn(sandbox, 'isDockerAvailable').mockReturnValue(false);
 
       const projectPath = tmpProject();
       const result = await engine.generate(
@@ -169,7 +169,7 @@ describe('OpenCodeEngine', () => {
 
       const engine = new OpenCodeEngine(templateEngine, sandbox, true);
       // opencode IS available on PATH in this env — mock it as available.
-      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(true);
+      jest.spyOn(sandbox, 'isDockerAvailable').mockReturnValue(true);
 
       const projectPath = tmpProject();
       // Pre-create some files as if opencode wrote them.
@@ -245,7 +245,7 @@ describe('OpenCodeEngine', () => {
       });
 
       const engine = new OpenCodeEngine(templateEngine, sandbox, true);
-      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(true);
+      jest.spyOn(sandbox, 'isDockerAvailable').mockReturnValue(true);
 
       const projectPath = tmpProject();
       await expect(
@@ -273,7 +273,7 @@ describe('OpenCodeEngine', () => {
       });
 
       const engine = new OpenCodeEngine(templateEngine, sandbox, true);
-      jest.spyOn(engine, 'isOpencodeAvailable').mockReturnValue(true);
+      jest.spyOn(sandbox, 'isDockerAvailable').mockReturnValue(true);
 
       const projectPath = tmpProject();
       await expect(
