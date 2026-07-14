@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Allow remote dev access (ECS, cloud servers).  Restrict in production.
+  // Allow remote dev access from cloud servers (ECS public IPs).
+  // '*' works in Next.js 16+; restrict in production if needed.
   allowedDevOrigins: process.env.NEXT_ALLOWED_DEV_ORIGINS
     ? process.env.NEXT_ALLOWED_DEV_ORIGINS.split(',')
-    : ['*'],
+    : true,
   // Consume the local workspace contract package from source (no pre-build needed).
   transpilePackages: ['@agent-builder/shared-contracts'],
   // Proxy API, SSE, and health requests to the NestJS backend during dev.
