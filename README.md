@@ -111,11 +111,16 @@ npm run dev:api:llm
 npm run dev:web
 ```
 
+> **云服务器（ECS）额外步骤**：前端 dev server 禁止跨域访问公网 IP。执行：
+> ```bash
+> echo 'NEXT_ALLOWED_DEV_ORIGINS=你的公网IP' > apps/web/.env.local
+> ```
+
 **步骤 3：验证**
 
 ```bash
 curl http://localhost:3001/health        # → {"status":"ok","service":"agent-builder-api","version":"0.1.0"}
-curl http://localhost:3001/health/deep    # → P3 诊断：LLM key 存在性 / OpenCode 配置 / Docker / runner（不输出密钥值）
+curl http://localhost:3001/health/deep    # → 诊断：LLM key / Docker / OpenCode / runner（不输出密钥值）
 curl -I http://localhost:3000             # → HTTP 200
 ```
 
@@ -308,6 +313,20 @@ SPEC_LLM_PROVIDER=mock
 ```powershell
 $env:NODE_OPTIONS="--openssl-legacy-provider"
 ```
+
+**Q: 云服务器（阿里云 ECS）部署注意事项**
+
+1. **Docker Hub 被墙**：`docker compose build` 拉不到 `python:3.11-slim`。解决方案：
+   - 在能翻墙的开发机上 `docker pull python:3.11-slim && docker save python:3.11-slim | gzip > python.tar.gz`
+   - 传到 ECS 上 `gunzip -c python.tar.gz | docker load`
+   - Dockerfile 已内置阿里云镜像源（apt + pip），后续 `docker compose build` 不再需要翻墙
+2. **Next.js 跨域拦截**：`echo 'NEXT_ALLOWED_DEV_ORIGINS=公网IP' > apps/web/.env.local`
+3. **宿主机不需要 opencode**：opencode 在 Docker 镜像里，API 检查的是 Docker 可用性，不是宿主机 opencode 命令
+
+**Q: Docker `apt-get` / `pip` 下载很慢或失败**
+
+Dockerfile 默认使用阿里云镜像源（`ARG USE_ALIYUN_MIRROR=true`，`ARG PIP_INDEX=https://mirrors.aliyun.com/pypi/simple/`）。
+海外部署可禁用：`docker compose build --build-arg USE_ALIYUN_MIRROR=false`
 
 **Q: 如何重置 Demo 数据**
 
