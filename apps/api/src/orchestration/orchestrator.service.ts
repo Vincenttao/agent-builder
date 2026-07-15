@@ -353,7 +353,7 @@ export class OrchestratorService {
       // (it ran `PYTHONPATH=src pytest`). Otherwise flat-import projects fail
       // the smoke gate with ModuleNotFoundError even though opencode's own run
       // passed.
-      envAllowlist: { PYTHONPATH: `${projectPath}${path.delimiter}${path.join(projectPath, 'src')}` },
+      envAllowlist: this.buildSmokeEnvAllowlist(projectPath),
     });
 
     const passed = result.status === 'success';
@@ -663,6 +663,32 @@ export class OrchestratorService {
       // best-effort: fall through to default
     }
     return ['python', '-m', 'pytest', 'tests/', '-q'];
+  }
+
+  /**
+   * Build the env allowlist for the smoke-test sandbox run.
+   *
+   * The generated `agent.py` reads the provider key via
+   * `os.getenv("${PROVIDER}_API_KEY", "")` at import time, and OpenJiuwen
+   * validates that the key is non-empty when the Agent is constructed.
+   * Without injection the smoke test fails at pytest collection with
+   * `ValidationError: api_key is required for provider DeepSeek`.
+   *
+   * P4 contract: prefer RUN_LLM_* (runtime LLM) over OPENCODE_* (codegen LLM).
+   */
+  private buildSmokeEnvAllowlist(projectPath: string): Record<string, string> {
+    const allowlist: Record<string, string> = {
+      PYTHONPATH: `${projectPath}${path.delimiter}${path.join(projectPath, 'src')}`,
+    };
+    const provider = process.env.RUN_LLM_PROVIDER ?? process.env.OPENCODE_PROVIDER;
+    const apiKey = process.env.RUN_LLM_API_KEY ?? process.env.OPENCODE_API_KEY;
+    const baseUrl = process.env.RUN_LLM_BASE_URL ?? process.env.OPENCODE_BASE_URL;
+    if (provider && apiKey) {
+      const upper = provider.toUpperCase();
+      allowlist[`${upper}_API_KEY`] = apiKey;
+      if (baseUrl) allowlist[`${upper}_BASE_URL`] = baseUrl;
+    }
+    return allowlist;
   }
 
   /** The most recently created version for a generation (the one under test). */
